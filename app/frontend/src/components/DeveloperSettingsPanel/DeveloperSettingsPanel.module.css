@@ -1,0 +1,89 @@
+.developerSettingsPanel {
+    padding: 20px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.panelHeader {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e1e1e1;
+}
+
+.panelHeader h3 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #323130;
+}
+
+.panelHeader p {
+    margin: 0;
+    color: #605e5c;
+    font-size: 14px;
+}
+
+.settingCard {
+    background: #fafafa;
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.settingCard h4 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #323130;
+}
+
+.description {
+    color: #605e5c;
+    font-size: 14px;
+    margin: 0 0 12px 0;
+    line-height: 1.4;
+}
+
+.parameterDescription {
+    color: #605e5c;
+    font-size: 12px;
+    margin: 4px 0 8px 0;
+    line-height: 1.3;
+}
+
+.actionButtons {
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e1e1e1;
+}
+
+.previewGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.previewItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: white;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+}
+
+.previewItem strong {
+    color: #323130;
+    font-size: 12px;
+}
+
+.previewItem span {
+    color: #0078d4;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+}

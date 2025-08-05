@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Conversation Starters</title>
+</head>
+<body>
+    <h1>Test Conversation Starters Local Storage</h1>
+    
+    <h2>Current Conversation Starters:</h2>
+    <div id="current-starters"></div>
+    
+    <h2>Set Test Starters:</h2>
+    <button onclick="setTestStarters()">Set Test Starters</button>
+    <button onclick="clearStarters()">Clear Starters</button>
+    <button onclick="loadStarters()">Reload Starters</button>
+    
+    <script>
+        function loadStarters() {
+            const saved = localStorage.getItem('conversation_starters');
+            const startersDiv = document.getElementById('current-starters');
+            
+            if (saved) {
+                try {
+                    const starters = JSON.parse(saved);
+                    startersDiv.innerHTML = '<pre>' + JSON.stringify(starters, null, 2) + '</pre>';
+                } catch (error) {
+                    startersDiv.innerHTML = 'Error parsing starters: ' + error.message;
+                }
+            } else {
+                startersDiv.innerHTML = 'No conversation starters found in localStorage';
+            }
+        }
+        
+        function setTestStarters() {
+            const testStarters = [
+                {
+                    text: "How does Azure Video Indexer work?",
+                    value: "How does Azure Video Indexer work?"
+                },
+                {
+                    text: "What are the benefits of AI in video analysis?",
+                    value: "What are the benefits of AI in video analysis?"
+                },
+                {
+                    text: "Can you explain machine learning concepts?",
+                    value: "Can you explain machine learning concepts?"
+                }
+            ];
+            
+            localStorage.setItem('conversation_starters', JSON.stringify(testStarters));
+            
+            // Trigger the custom event
+            window.dispatchEvent(new CustomEvent('conversation_starters_updated'));
+            
+            loadStarters();
+            alert('Test starters set successfully!');
+        }
+        
+        function clearStarters() {
+            localStorage.removeItem('conversation_starters');
+            window.dispatchEvent(new CustomEvent('conversation_starters_updated'));
+            loadStarters();
+            alert('Starters cleared!');
+        }
+        
+        // Load starters on page load
+        loadStarters();
+    </script>
+</body>
+</html>

@@ -4,9 +4,36 @@ import requests
 import time
 from typing import Optional
 from urllib.parse import urlparse
+from functools import wraps
 
 from .consts import Consts
 from .account_token_provider import get_arm_access_token, get_account_access_token_async
+
+
+def auto_retry_auth(max_retries=2):
+    """裝飾器：自動重試認證失敗的請求"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(self, *args, **kwargs)
+                except (requests.exceptions.HTTPError, Exception) as e:
+                    if attempt < max_retries and (
+                        "401" in str(e) or "403" in str(e) or "Unauthorized" in str(e) or "token" in str(e).lower()
+                    ):
+                        print(f"認證失敗，重新認證中... (嘗試 {attempt + 1}/{max_retries + 1})")
+                        try:
+                            self.re_authenticate()
+                        except Exception as auth_error:
+                            print(f"重新認證失敗: {auth_error}")
+                            if attempt == max_retries:
+                                raise e
+                    else:
+                        raise e
+            return None
+        return wrapper
+    return decorator
 
 
 def extract_video_id_from_conflict_message(message) -> Optional[str]:
@@ -33,6 +60,16 @@ class VideoIndexerClient:
         # Get access tokens
         self.arm_access_token = get_arm_access_token(self.consts)
         self.vi_access_token = get_account_access_token_async(self.consts, self.arm_access_token)
+
+    def re_authenticate(self) -> None:
+        """重新認證並更新存取權杖"""
+        if self.consts is None:
+            raise Exception("無法重新認證：沒有初始設定")
+        print("正在重新認證...")
+        self.arm_access_token = get_arm_access_token(self.consts)
+        self.vi_access_token = get_account_access_token_async(self.consts, self.arm_access_token)
+        self.account = None  # 重置帳戶資訊，強制重新獲取
+        print("重新認證完成")
 
     def get_account_async(self) -> None:
         '''
@@ -110,6 +147,7 @@ class VideoIndexerClient:
 
         return video_id
 
+    @auto_retry_auth(max_retries=2)
     def file_upload_async(self, media_path: str | Path, video_name: Optional[str] = None,
                           excluded_ai: Optional[list[str]] = None, video_description: str = '', privacy='private',
                           partition='') -> str:

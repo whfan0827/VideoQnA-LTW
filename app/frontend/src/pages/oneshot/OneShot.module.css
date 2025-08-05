@@ -125,3 +125,140 @@
         text-align: left;
     }
 }
+
+/* Developer Tools Panel Styles */
+.configSection {
+    padding: 16px;
+    height: auto;
+    overflow: visible;
+}
+
+.libraryManagementPanel {
+    padding: 16px;
+}
+
+.developerSettingsPanel {
+    padding: 16px;
+}
+
+.panelHeader {
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e1dfdd;
+}
+
+.panelHeader h3 {
+    margin: 0 0 4px 0;
+    color: #323130;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.panelHeader p {
+    margin: 0;
+    color: #605e5c;
+    font-size: 14px;
+}
+
+.actionCard {
+    padding: 16px;
+    border: 1px solid #e1dfdd;
+    border-radius: 8px;
+    background-color: #fafafa;
+    margin-bottom: 16px;
+}
+
+.actionCard h4 {
+    margin: 0 0 12px 0;
+    color: #323130;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.fileUploadArea {
+    border: 2px dashed #c8c6c4;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.fileUploadArea:hover {
+    border-color: #106ebe;
+}
+
+.fileInput {
+    display: none;
+}
+
+.fileLabel {
+    cursor: pointer;
+    display: block;
+    color: #323130;
+}
+
+.librariesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.libraryCard {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #e1dfdd;
+    border-radius: 6px;
+    background-color: white;
+    gap: 12px;
+}
+
+.libraryIcon {
+    font-size: 20px;
+}
+
+.libraryInfo strong {
+    display: block;
+    color: #323130;
+    font-size: 14px;
+}
+
+.libraryInfo small {
+    color: #605e5c;
+    font-size: 12px;
+}
+
+.emptyState {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    color: #605e5c;
+}
+
+.settingGroup {
+    margin-bottom: 16px;
+}
+
+.settingGroup h4 {
+    margin: 0 0 12px 0;
+    color: #323130;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.settingDescription {
+    margin-top: 4px;
+    margin-bottom: 12px;
+    color: #605e5c;
+}
+
+.promptHelp {
+    margin-top: 8px;
+    padding: 12px;
+    background-color: #f3f2f1;
+    border-radius: 6px;
+    color: #323130;
+}

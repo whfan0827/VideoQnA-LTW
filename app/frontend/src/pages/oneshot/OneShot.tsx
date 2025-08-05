@@ -8,12 +8,16 @@ import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
 import { IndexesDropdown } from "../../components/IndexesDropdown";
+import { LibraryManagementPanel } from "../../components/LibraryManagementPanel";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
+import { LibraryManagementButton } from "../../components/LibraryManagementButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
+import { DeveloperSettingsPanel } from "../../components/DeveloperSettingsPanel/DeveloperSettingsPanel";
 
 const OneShot = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
+    const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
     const [approach, setApproach] = useState<Approaches>(Approaches.ReadRetrieveReadVector);
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [promptTemplatePrefix, setPromptTemplatePrefix] = useState<string>("");
@@ -41,10 +45,19 @@ const OneShot = () => {
     useEffect(() => {
         getIndexes();
     }, []);
+    
     const onIndexChanged = (index: string) => {
         console.log("index changed to: " + index);
+        console.log("available indexes: ", indexes.map(i => ({ key: i.key, text: i.text })));
         setIndex(index);
     };
+    
+    const refreshIndexes = async () => {
+        const newIndexes = await indexesAPI();
+        const convertedIndexes = newIndexes.map(index => ({ key: index, text: formatString(index) }));
+        setIndexes(convertedIndexes);
+    };
+    
     const getIndexes = async () => {
         setIsLoading(true);
         try {
@@ -178,6 +191,7 @@ const OneShot = () => {
         <div className={styles.oneshotContainer}>
             <div className={styles.oneshotTopSection}>
                 <div className={styles.commandsContainer}>
+                    <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
                     <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                     <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
                 </div>
@@ -230,24 +244,35 @@ const OneShot = () => {
                 <Spinner className={styles.loadingIndexes} label="Loading" />
             )}
             <Panel
-                headerText="Configure answer generation"
+                headerText="Developer Settings"
                 isOpen={isConfigPanelOpen}
                 isBlocking={false}
                 onDismiss={() => setIsConfigPanelOpen(false)}
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsConfigPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
+                customWidth="800px"
             >
-                <SpinButton
-                    className={styles.oneshotSettingsSeparator}
-                    label="Retrieve this many documents from search:"
-                    min={1}
-                    max={50}
-                    defaultValue={retrieveCount.toString()}
-                    onChange={onRetrieveCountChange}
-                />
-                <div className={styles.oneshotSettingsSeparator}>
-                    <IndexesDropdown indexes={indexes} onIndexChanged={onIndexChanged} />
+                <div className={styles.configSection}>
+                    <DeveloperSettingsPanel indexes={indexes} />
+                </div>
+            </Panel>
+
+            <Panel
+                headerText="Library Management"
+                isOpen={isLibraryPanelOpen}
+                isBlocking={false}
+                onDismiss={() => setIsLibraryPanelOpen(false)}
+                closeButtonAriaLabel="Close"
+                onRenderFooterContent={() => <DefaultButton onClick={() => setIsLibraryPanelOpen(false)}>Close</DefaultButton>}
+                isFooterAtBottom={true}
+                customWidth="700px"
+            >
+                <div className={styles.configSection}>
+                    <LibraryManagementPanel 
+                        indexes={indexes}
+                        onLibrariesChanged={refreshIndexes}
+                    />
                 </div>
             </Panel>
         </div>

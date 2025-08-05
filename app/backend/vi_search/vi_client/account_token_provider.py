@@ -1,5 +1,6 @@
 import requests
-from azure.identity import DefaultAzureCredential
+import os
+from azure.identity import DefaultAzureCredential, ClientSecretCredential
 
 from .consts import Consts
 
@@ -7,12 +8,27 @@ from .consts import Consts
 def get_arm_access_token(consts:Consts) -> str:
     '''
     Get an access token for the Azure Resource Manager
-    Make sure you're logged in with `az` first
+    使用 Service Principal 或 DefaultAzureCredential 進行認證
 
     :param consts: Consts object
     :return: Access token for the Azure Resource Manager
     '''
-    credential = DefaultAzureCredential()
+    # 優先使用 Service Principal 認證
+    client_id = os.getenv('AZURE_CLIENT_ID')
+    client_secret = os.getenv('AZURE_CLIENT_SECRET')
+    tenant_id = os.getenv('AZURE_TENANT_ID')
+    
+    if client_id and client_secret and tenant_id:
+        print("使用 Service Principal 進行認證...")
+        credential = ClientSecretCredential(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            client_secret=client_secret
+        )
+    else:
+        print("使用 Default Azure Credential 進行認證...")
+        credential = DefaultAzureCredential()
+    
     scope = f"{consts.AzureResourceManager}/.default"
     token = credential.get_token(scope)
     return token.token

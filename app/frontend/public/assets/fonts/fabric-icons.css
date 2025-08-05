@@ -1,0 +1,66 @@
+/* Fluent UI Icons Font Face Definitions */
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-0-af2e1a3a.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-1-4d521695.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-2-63c99abf.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-3-089e217a.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-4-a9d0db63.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'FabricMDL2Icons';
+  src: url('https://static2.sharepointonline.com/files/fabric/assets/icons/fabric-icons-5-38264a5c.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* Icon styles */
+.ms-Icon {
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-family: 'FabricMDL2Icons';
+  font-style: normal;
+  font-weight: normal;
+}
+
+/* Common icon definitions */
+.ms-Icon--Save:before { content: "\E74E"; }
+.ms-Icon--Refresh:before { content: "\E72C"; }
+.ms-Icon--Settings:before { content: "\E713"; }
+.ms-Icon--Info:before { content: "\E946"; }
+.ms-Icon--Warning:before { content: "\E7BA"; }
+.ms-Icon--Error:before { content: "\E783"; }
+.ms-Icon--CheckMark:before { content: "\E73E"; }

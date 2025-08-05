@@ -83,14 +83,28 @@ class CustomEncoder(json.JSONEncoder):
 
 
 def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_content_db: PromptContentDB,
-               use_videos_ids_cache=True, video_ids_cache_file='videos_ids_cache.json', verbose=False):
+               use_videos_ids_cache=True, video_ids_cache_file='videos_ids_cache.json', verbose=False, 
+               single_video_file=None):
 
-    videos = list(data_dir.glob('*.mp4'))
+    # If single_video_file is provided, process only that file
+    if single_video_file:
+        videos = [Path(single_video_file)]
+    else:
+        # Support multiple video formats
+        video_extensions = ['*.mp4', '*.mov', '*.avi', '*.mkv']
+        videos = []
+        for ext in video_extensions:
+            videos.extend(list(data_dir.glob(ext)))
+    
     video_ids_cache_file = Path(video_ids_cache_file)
 
     ### Initialization ###
     try:
-        config = dotenv_values(BASE_DIR / ".env")
+        # .env 檔案在 backend 目錄中
+        env_path = Path(__file__).parent.parent / ".env"
+        config = dotenv_values(env_path)
+        print(f"Loading .env from: {env_path}")
+        print(f"Found AccountName: {config.get('AccountName')}")
     except FileNotFoundError:
         ''' Expects a file with the following text (Taken from Azure Portal):
                 AccountName='YOUR_VI_ACCOUNT_NAME'

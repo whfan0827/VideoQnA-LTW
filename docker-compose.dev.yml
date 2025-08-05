@@ -1,0 +1,20 @@
+# 開發模式覆蓋配置
+version: '3.8'
+
+services:
+  videoqna-app:
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      # 掛載源碼以支援熱重載
+      - ./app/backend:/app:delegated
+      # 排除 __pycache__ 目錄
+      - /app/__pycache__
+    ports:
+      - "5000:5000"
+    # 開發模式下使用 flask run 而不是 python app.py
+    command: >
+      sh -c "export FLASK_APP=app.py && 
+             export FLASK_ENV=development && 
+             flask run --host=0.0.0.0 --port=5000 --reload"
