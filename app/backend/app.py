@@ -16,6 +16,10 @@ from flask_limiter.util import get_remote_address
 from vi_search.ask import RetrieveThenReadVectorApproach
 from vi_search.prepare_db import prepare_db
 from vi_search.constants import BASE_DIR, DATA_DIR
+from services.settings_service import SettingsService
+from services.ai_template_service import AITemplateService, init_ai_templates_database
+from database.init_db import init_database
+from database.init_db import init_database
 
 
 search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
@@ -43,7 +47,23 @@ ask_approaches = {
     "rrrv": RetrieveThenReadVectorApproach(prompt_content_db=prompt_content_db, language_models=language_models)
 }
 
+# Initialize settings service
+settings_service = SettingsService()
+
+# Initialize AI template service
+ai_template_service = AITemplateService()
+
 app = Flask(__name__)
+
+# Initialize database on startup
+try:
+    init_database()
+    print("Database initialized successfully")
+    init_ai_templates_database()
+    print("AI templates database initialized successfully")
+except Exception as e:
+    print(f"Database initialization error: {e}")
+    # Continue anyway as the database might already exist
 
 # The limiter is used to prevent abuse of the API, you can adjust the limits as needed
 limiter = Limiter(
@@ -77,8 +97,25 @@ def ask():
         if impl is None:
             return jsonify({"error": "unknown approach"}), 400
 
+        # Get overrides from request
+        overrides = request.json.get("overrides") or {}
+        
+        # Get library name from overrides (the index name corresponds to library)
+        library_name = overrides.get("index", "default")
+        print(f"[DEBUG] Received library_name from overrides: {library_name}")
+        
+        # Load library settings and merge with overrides
+        try:
+            library_settings = settings_service.get_settings(library_name)
+            # Library settings take precedence over defaults, but request overrides take precedence over both
+            merged_overrides = {**library_settings, **overrides}
+            print(f"[DEBUG] Merged overrides keys: {list(merged_overrides.keys())}")
+        except Exception as e:
+            print(f"Warning: Could not load settings for library '{library_name}': {e}")
+            merged_overrides = overrides
+
         # print(f"question: {request.json['question']}")
-        r = impl.run(request.json.get("question", ""), request.json.get("overrides") or {})
+        r = impl.run(request.json.get("question", ""), merged_overrides)
         print(f"response: {r['answer']}\n\n")
         # print(f"response: {r}\n\n")
         return jsonify(r)
@@ -184,15 +221,8 @@ def upload_video():
 def get_library_settings(library_name):
     """Get settings for a specific library"""
     try:
-        # For now, return default settings
-        # You can extend this to store actual settings in a database
-        default_settings = {
-            "promptTemplate": "You are an AI assistant that answers questions about videos.\n\nContext: {context}\nQuestion: {question}\n\nAnswer:",
-            "semanticRanker": True,
-            "temperature": 0.7,
-            "maxTokens": 800
-        }
-        return jsonify(default_settings), 200
+        settings = settings_service.get_settings(library_name)
+        return jsonify(settings), 200
         
     except Exception as e:
         logging.exception("Exception in /settings GET")
@@ -207,13 +237,193 @@ def save_library_settings(library_name):
         if not data:
             return jsonify({"error": "Settings data is required"}), 400
         
-        # For now, just acknowledge the save
-        # You can extend this to actually store settings in a database
+        # Save settings using the service
+        settings_service.save_settings(library_name, data)
+        
         return jsonify({"message": f"Settings for '{library_name}' saved successfully"}), 200
         
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         logging.exception("Exception in /settings POST")
         return jsonify({"error": str(e)}), 500
+
+
+# AI Parameters Management API endpoints
+@app.route("/api/libraries/<library_name>/ai-parameters", methods=["GET"])
+def get_library_ai_parameters(library_name):
+    """Get AI parameters for a specific library"""
+    try:
+        settings = settings_service.get_settings(library_name)
+        
+        # Return AI parameters with default values if not set
+        ai_parameters = {
+            "model": settings.get("model", "gpt-4o"),
+            "temperature": settings.get("temperature", 0.7),
+            "maxTokens": settings.get("maxTokens", 2000),
+            "topP": settings.get("topP", 0.9),
+            "frequencyPenalty": settings.get("frequencyPenalty", 0),
+            "presencePenalty": settings.get("presencePenalty", 0),
+            "stopSequences": settings.get("stopSequences", []),
+            "systemPrompt": settings.get("promptTemplate", ""),
+            "conversationStarters": settings.get("conversationStarters", []),
+            "timeoutSeconds": settings.get("timeoutSeconds", 30),
+            "enableStreaming": settings.get("enableStreaming", True),
+            "enableFunctionCalling": settings.get("enableFunctionCalling", False),
+            "maxRetries": settings.get("maxRetries", 3),
+        }
+        
+        return jsonify(ai_parameters)
+        
+    except Exception as e:
+        logging.exception(f"Exception in get AI parameters for library {library_name}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/libraries/<library_name>/ai-parameters", methods=["PUT"])
+def update_library_ai_parameters(library_name):
+    """Update AI parameters for a specific library"""
+    if not request.json:
+        return jsonify({"error": "Invalid JSON"}), 400
+        
+    try:
+        # Get existing settings
+        existing_settings = settings_service.get_settings(library_name)
+        
+        # Map AI parameters to settings format
+        ai_params = request.json
+        updated_settings = {
+            **existing_settings,  # Keep existing settings
+            "model": ai_params.get("model", existing_settings.get("model", "gpt-4o")),
+            "temperature": ai_params.get("temperature", existing_settings.get("temperature", 0.7)),
+            "maxTokens": ai_params.get("maxTokens", existing_settings.get("maxTokens", 2000)),
+            "topP": ai_params.get("topP", existing_settings.get("topP", 0.9)),
+            "frequencyPenalty": ai_params.get("frequencyPenalty", existing_settings.get("frequencyPenalty", 0)),
+            "presencePenalty": ai_params.get("presencePenalty", existing_settings.get("presencePenalty", 0)),
+            "stopSequences": ai_params.get("stopSequences", existing_settings.get("stopSequences", [])),
+            "promptTemplate": ai_params.get("systemPrompt", existing_settings.get("promptTemplate", "")),
+            "conversationStarters": ai_params.get("conversationStarters", existing_settings.get("conversationStarters", [])),
+            "timeoutSeconds": ai_params.get("timeoutSeconds", existing_settings.get("timeoutSeconds", 30)),
+            "enableStreaming": ai_params.get("enableStreaming", existing_settings.get("enableStreaming", True)),
+            "enableFunctionCalling": ai_params.get("enableFunctionCalling", existing_settings.get("enableFunctionCalling", False)),
+            "maxRetries": ai_params.get("maxRetries", existing_settings.get("maxRetries", 3)),
+        }
+        
+        # Save updated settings
+        settings_service.save_settings(library_name, updated_settings)
+        
+        return jsonify({"message": f"AI parameters for '{library_name}' updated successfully"}), 200
+        
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception(f"Exception in update AI parameters for library {library_name}")
+        return jsonify({"error": str(e)}), 500
+
+
+# AI Templates API endpoints
+@app.route("/api/templates", methods=["GET"])
+def get_all_templates():
+    """Get all AI templates"""
+    try:
+        templates = ai_template_service.get_all_templates()
+        return jsonify(templates)
+    
+    except Exception as e:
+        logging.exception("Exception in get all templates")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates/<template_name>", methods=["GET"])
+def get_template(template_name):
+    """Get a specific template"""
+    try:
+        template = ai_template_service.get_template(template_name)
+        if not template:
+            return jsonify({"error": "Template not found"}), 404
+        
+        return jsonify(template)
+    
+    except Exception as e:
+        logging.exception("Exception in get template")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates", methods=["POST"])
+def create_template():
+    """Create a new AI template"""
+    if not request.json:
+        return jsonify({"error": "Invalid JSON"}), 400
+    
+    try:
+        template = ai_template_service.create_template(request.json)
+        return jsonify(template), 201
+    
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception("Exception in create template")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates/<template_name>", methods=["PUT"])
+def update_template(template_name):
+    """Update an existing template"""
+    if not request.json:
+        return jsonify({"error": "Invalid JSON"}), 400
+    
+    try:
+        template = ai_template_service.update_template(template_name, request.json)
+        return jsonify(template)
+    
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception("Exception in update template")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates/<template_name>", methods=["DELETE"])
+def delete_template(template_name):
+    """Delete a template"""
+    try:
+        ai_template_service.delete_template(template_name)
+        return jsonify({"message": "Template deleted successfully"})
+    
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception("Exception in delete template")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates/<template_name>/apply-to/<library_name>", methods=["POST"])
+def apply_template_to_library(template_name, library_name):
+    """Apply a template to a specific library"""
+    try:
+        result = ai_template_service.apply_template_to_library(
+            template_name, library_name, settings_service
+        )
+        return jsonify(result)
+    
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception("Exception in apply template to library")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/templates/categories", methods=["GET"])
+def get_templates_by_category():
+    """Get templates grouped by category"""
+    try:
+        categories = ai_template_service.get_templates_by_category()
+        return jsonify(categories)
+    
+    except Exception as e:
+        logging.exception("Exception in get templates by category")
+        return jsonify({"error": str(e)}), 500
+
 
 # Handle the rate limit exceeded exception
 @app.errorhandler(429)
@@ -222,23 +432,23 @@ def ratelimit_handler(e):
 
 
 if __name__ == "__main__":
-    # 檢查是否在容器環境中
+    # Check if running in container environment
     is_docker = os.path.exists('/.dockerenv')
     is_development = os.environ.get('FLASK_ENV') == 'development'
     
     if is_docker:
-        # Docker 環境設定
+        # Docker environment configuration
         app.run(
-            host='0.0.0.0',  # 容器內必須綁定到 0.0.0.0
+            host='0.0.0.0',  # Must bind to 0.0.0.0 in container
             port=5000,
             debug=is_development,
             threaded=True
         )
     else:
-        # 本機開發設定
+        # Local development configuration
         app.run(
-            host='0.0.0.0',  # 允許外部連接
+            host='0.0.0.0',  # Allow external connections
             port=5000,
-            debug=True,      # 啟用除錯模式
-            threaded=True    # 支援多執行緒
+            debug=True,      # Enable debug mode
+            threaded=True    # Enable multi-threading
         )

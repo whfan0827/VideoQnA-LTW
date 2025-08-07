@@ -1,0 +1,186 @@
+/* AIParameterPanel.module.css */
+
+.panelSubtitleSection {
+    padding: 0 24px 16px 24px;
+    border-bottom: 1px solid #edebe9;
+    margin-bottom: 20px;
+}
+
+.panelSubtitle {
+    margin: 0;
+    font-size: 14px;
+    color: #605e5c;
+    line-height: 1.4;
+}
+
+.tabContent {
+    padding: 0 24px 24px 24px;
+    min-height: 600px;
+}
+
+.settingSection {
+    margin-bottom: 32px;
+    padding: 20px;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    background-color: #faf9f8;
+}
+
+.sectionHeader {
+    margin-bottom: 16px;
+}
+
+.sectionTitle {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #323130;
+}
+
+.sectionDescription {
+    margin: 0;
+    font-size: 14px;
+    color: #605e5c;
+    line-height: 1.4;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.fullWidth {
+    grid-column: 1 / -1;
+}
+
+.parameterGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+}
+
+.parameterCard {
+    padding: 16px;
+    border: 1px solid #d2d0ce;
+    border-radius: 4px;
+    background-color: #ffffff;
+}
+
+.parameterTitle {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #323130;
+}
+
+.parameterDescription {
+    margin: 0 0 16px 0;
+    font-size: 13px;
+    color: #605e5c;
+    line-height: 1.3;
+}
+
+.promptEditor {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.templateList {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #d2d0ce;
+    border-radius: 4px;
+}
+
+.templateItem {
+    padding: 16px;
+    border-bottom: 1px solid #edebe9;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.templateItem:hover {
+    background-color: #f3f2f1;
+}
+
+.templateItem:last-child {
+    border-bottom: none;
+}
+
+.templateHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.templateName {
+    font-weight: 600;
+    color: #323130;
+    margin: 0;
+}
+
+.templateCategory {
+    font-size: 12px;
+    padding: 4px 8px;
+    background-color: #deecf9;
+    color: #0078d4;
+    border-radius: 12px;
+}
+
+.systemTemplate {
+    background-color: #dff6dd;
+    color: #107c10;
+}
+
+.templateDescription {
+    font-size: 13px;
+    color: #605e5c;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.actionBar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid #edebe9;
+    margin-top: 24px;
+}
+
+.messageContainer {
+    margin: 0 24px 20px 24px;
+}
+
+.loadingSpinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+}
+
+@media (max-width: 1024px) {
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
+    
+    .parameterGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .panelContent {
+        padding: 16px;
+    }
+    
+    .tabContent {
+        min-height: 500px;
+    }
+}

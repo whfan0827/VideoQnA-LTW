@@ -1,26 +1,26 @@
-# VideoQnA-LTW 本機開發環境設置指南
+# VideoQnA-LTW Local Development Environment Setup Guide
 
-## 前置需求
+## Prerequisites
 
-1. **Python 3.10** - 後端需要
+1. **Python 3.10** - Required for backend
    ```powershell
-   python --version  # 應該顯示 Python 3.10.x
+   python --version  # Should show Python 3.10.x
    ```
 
-2. **Node.js** (建議 16+) - 前端需要
+2. **Node.js** (recommended 16+) - Required for frontend
    ```powershell
    node --version
    npm --version
    ```
 
-3. **Azure 服務帳號** (如果要使用實際的 Azure 服務)
-   - Azure OpenAI 服務
-   - Azure AI Search 服務
-   - Azure Video Indexer 帳號
+3. **Azure Service Account** (if using actual Azure services)
+   - Azure OpenAI Service
+   - Azure AI Search Service
+   - Azure Video Indexer Account
 
-## 本機開發設置步驟
+## Local Development Setup Steps
 
-### 步驟 1: 安裝 Python 依賴
+### Step 1: Install Python Dependencies
 
 ```powershell
 cd c:\PS\VideoQnA-LTW\app\backend

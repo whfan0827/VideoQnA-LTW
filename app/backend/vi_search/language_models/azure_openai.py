@@ -1,3 +1,5 @@
+from typing import Optional
+
 '''
 This was implemented with the help of the following resource:
     Azure OpenAI Samples
@@ -57,23 +59,33 @@ class OpenAI(LanguageModels):
         embeddings_vector = response.data[0].embedding
         return embeddings_vector
 
-    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0) -> str:
+    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0, max_tokens: Optional[int] = None) -> str:
         ''' Chat with the OpenAI model.
 
         :param sys_prompt: The system prompt to chat with
         :param user_prompt: The user prompt to chat with
         :param temperature: The temperature to use for chat
         :param top_p: The top_p to use for chat
+        :param max_tokens: The maximum number of tokens to generate
         :return: The response from the chat model
         '''
 
         messages = [{"role": "system", "content": sys_prompt},
                     {"role": "user", "content": user_prompt},]
 
-        res = self.client.chat.completions.create(model=self.azure_openai_chatgpt_deployment,
-                                                  messages=messages,
-                                                  temperature=temperature,
-                                                  top_p=top_p)
+        # Prepare API parameters
+        api_params = {
+            'model': self.azure_openai_chatgpt_deployment,
+            'messages': messages,
+            'temperature': temperature,
+            'top_p': top_p
+        }
+        
+        # Only add max_tokens if it's specified to avoid API issues
+        if max_tokens is not None and max_tokens > 0:
+            api_params['max_tokens'] = max_tokens
+
+        res = self.client.chat.completions.create(**api_params)
         content = res.choices[0].message.content
 
         # FIXME: Instead of raising an exception, we should return a proper error message

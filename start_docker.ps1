@@ -1,74 +1,74 @@
-# Docker 版本啟動腳本
-# 運行: .\start_docker.ps1
+# Docker Version Launch Script
+# Run: .\start_docker.ps1
 
-Write-Host "=== VideoQnA-LTW Docker 部署 ===" -ForegroundColor Green
+Write-Host "=== VideoQnA-LTW Docker Deployment ===" -ForegroundColor Green
 
-# 檢查 Docker 是否安裝
-Write-Host "`n檢查 Docker..." -ForegroundColor Yellow
+# Check if Docker is installed
+Write-Host "`nChecking Docker..." -ForegroundColor Yellow
 try {
     $dockerVersion = docker --version 2>&1
     Write-Host "✓ Docker: $dockerVersion" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Docker 未安裝或不在 PATH 中" -ForegroundColor Red
-    Write-Host "請先安裝 Docker Desktop: https://www.docker.com/products/docker-desktop" -ForegroundColor Cyan
+    Write-Host "✗ Docker is not installed or not in PATH" -ForegroundColor Red
+    Write-Host "Please install Docker Desktop first: https://www.docker.com/products/docker-desktop" -ForegroundColor Cyan
     exit 1
 }
 
-# 檢查 Docker Compose
+# Check Docker Compose
 try {
     $composeVersion = docker compose version 2>&1
     Write-Host "✓ Docker Compose: $composeVersion" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Docker Compose 未安裝" -ForegroundColor Red
+    Write-Host "✗ Docker Compose is not installed" -ForegroundColor Red
     exit 1
 }
 
-# 檢查 Docker 是否運行
-Write-Host "`n檢查 Docker 服務..." -ForegroundColor Yellow
+# Check if Docker is running
+Write-Host "`nChecking Docker service..." -ForegroundColor Yellow
 try {
     docker info > $null 2>&1
-    Write-Host "✓ Docker 服務正在運行" -ForegroundColor Green
+    Write-Host "✓ Docker service is running" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Docker 服務未運行，請啟動 Docker Desktop" -ForegroundColor Red
+    Write-Host "✗ Docker service is not running, please start Docker Desktop" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "`n選擇運行模式：" -ForegroundColor Yellow
-Write-Host "1. 測試模式（使用模擬服務，無需 Azure 配置）"
-Write-Host "2. Azure 模式（需要配置 Azure 服務）"
-Write-Host "3. 開發模式（代碼熱重載）"
-Write-Host "4. 停止並清理容器"
-Write-Host "5. 查看日誌"
-Write-Host "6. 退出"
+Write-Host "`nSelect run mode:" -ForegroundColor Yellow
+Write-Host "1. Test mode (uses mock services, no Azure configuration needed)"
+Write-Host "2. Azure mode (requires Azure service configuration)"
+Write-Host "3. Development mode (code hot reload)"
+Write-Host "4. Stop and clean containers"
+Write-Host "5. View logs"
+Write-Host "6. Exit"
 
-$choice = Read-Host "請輸入選擇 (1-6)"
+$choice = Read-Host "Please enter your choice (1-6)"
 
 switch ($choice) {
     "1" {
-        Write-Host "`n啟動測試模式..." -ForegroundColor Green
-        Write-Host "使用模擬的語言模型和本機向量資料庫" -ForegroundColor Cyan
+        Write-Host "`nStarting test mode..." -ForegroundColor Green
+        Write-Host "Using mock language model and local vector database" -ForegroundColor Cyan
         
-        # 使用預設的 docker-compose.yml（已設定為測試模式）
+        # Use default docker-compose.yml (configured for test mode)
         docker compose up --build -d
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "`n✓ 服務啟動成功！" -ForegroundColor Green
-            Write-Host "應用網址: http://localhost:5000" -ForegroundColor Cyan
-            Write-Host "`n查看日誌: docker compose logs -f" -ForegroundColor Gray
+            Write-Host "`n✓ Services started successfully!" -ForegroundColor Green
+            Write-Host "Application URL: http://localhost:5000" -ForegroundColor Cyan
+            Write-Host "`nView logs: docker compose logs -f" -ForegroundColor Gray
         } else {
-            Write-Host "✗ 啟動失敗，請檢查錯誤訊息" -ForegroundColor Red
+            Write-Host "✗ Startup failed, please check error messages" -ForegroundColor Red
         }
     }
     
     "2" {
-        Write-Host "`n啟動 Azure 模式..." -ForegroundColor Green
-        Write-Host "⚠ 需要先配置 Azure 服務資訊" -ForegroundColor Yellow
+        Write-Host "`nStarting Azure mode..." -ForegroundColor Green
+        Write-Host "⚠ Azure service information needs to be configured first" -ForegroundColor Yellow
         
-        # 檢查是否有 .env 文件
+        # Check if .env file exists
         if (-not (Test-Path ".env")) {
-            Write-Host "創建 .env 文件..." -ForegroundColor Cyan
+            Write-Host "Creating .env file..." -ForegroundColor Cyan
             @"
-# Azure 服務配置
+# Azure Service Configuration
 LANGUAGE_MODEL=openai
 PROMPT_CONTENT_DB=azure_search
 
@@ -88,48 +88,48 @@ ResourceGroup=your_resource_group
 SubscriptionId=your_subscription_id
 "@ | Out-File -FilePath ".env" -Encoding UTF8
             
-            Write-Host "✓ 已創建 .env 文件" -ForegroundColor Green
-            Write-Host "請編輯 .env 文件並填入你的 Azure 服務資訊，然後重新運行此腳本" -ForegroundColor Yellow
+            Write-Host "✓ .env file created" -ForegroundColor Green
+            Write-Host "Please edit the .env file and fill in your Azure service information, then run this script again" -ForegroundColor Yellow
             exit 0
         }
         
         docker compose --env-file .env up --build -d
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "`n✓ 服務啟動成功！" -ForegroundColor Green
-            Write-Host "應用網址: http://localhost:5000" -ForegroundColor Cyan
+            Write-Host "`n✓ Services started successfully!" -ForegroundColor Green
+            Write-Host "Application URL: http://localhost:5000" -ForegroundColor Cyan
         } else {
-            Write-Host "✗ 啟動失敗，請檢查 Azure 服務配置" -ForegroundColor Red
+            Write-Host "✗ Startup failed, please check Azure service configuration" -ForegroundColor Red
         }
     }
     
     "3" {
-        Write-Host "`n啟動開發模式..." -ForegroundColor Green
-        Write-Host "代碼變更將自動重載" -ForegroundColor Cyan
+        Write-Host "`nStarting development mode..." -ForegroundColor Green
+        Write-Host "Code changes will be automatically reloaded" -ForegroundColor Cyan
         
-        # 開發模式，掛載源碼目錄
+        # Development mode, mount source code directories
         docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
     }
     
     "4" {
-        Write-Host "`n停止並清理容器..." -ForegroundColor Yellow
+        Write-Host "`nStopping and cleaning containers..." -ForegroundColor Yellow
         docker compose down -v
         docker system prune -f
-        Write-Host "✓ 清理完成" -ForegroundColor Green
+        Write-Host "✓ Cleanup completed" -ForegroundColor Green
     }
     
     "5" {
-        Write-Host "`n查看服務日誌..." -ForegroundColor Yellow
+        Write-Host "`nViewing service logs..." -ForegroundColor Yellow
         docker compose logs -f
     }
     
     "6" {
-        Write-Host "退出" -ForegroundColor Gray
+        Write-Host "Exit" -ForegroundColor Gray
         exit 0
     }
     
     default {
-        Write-Host "無效選擇" -ForegroundColor Red
+        Write-Host "Invalid selection" -ForegroundColor Red
         exit 1
     }
 }

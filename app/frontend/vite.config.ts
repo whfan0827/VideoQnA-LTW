@@ -13,7 +13,11 @@ export default defineConfig({
         proxy: {
             "/ask": "http://localhost:5000",
             "/chat": "http://localhost:5000",
-            "/indexes": "http://localhost:5000"
+            "/indexes": "http://localhost:5000",
+            "/libraries": "http://localhost:5000",
+            "/upload": "http://localhost:5000",
+            "/settings": "http://localhost:5000",
+            "/api": "http://localhost:5000"
         }
     }
 });

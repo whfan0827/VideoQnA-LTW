@@ -11,7 +11,7 @@ from .account_token_provider import get_arm_access_token, get_account_access_tok
 
 
 def auto_retry_auth(max_retries=2):
-    """裝飾器：自動重試認證失敗的請求"""
+    """Decorator: Automatically retry requests that fail due to authentication"""
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -22,11 +22,11 @@ def auto_retry_auth(max_retries=2):
                     if attempt < max_retries and (
                         "401" in str(e) or "403" in str(e) or "Unauthorized" in str(e) or "token" in str(e).lower()
                     ):
-                        print(f"認證失敗，重新認證中... (嘗試 {attempt + 1}/{max_retries + 1})")
+                        print(f"Authentication failed, re-authenticating... (attempt {attempt + 1}/{max_retries + 1})")
                         try:
                             self.re_authenticate()
                         except Exception as auth_error:
-                            print(f"重新認證失敗: {auth_error}")
+                            print(f"Re-authentication failed: {auth_error}")
                             if attempt == max_retries:
                                 raise e
                     else:

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption } from "@fluentui/react";
+import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, PanelType, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption } from "@fluentui/react";
 
 import styles from "./OneShot.module.css";
 
@@ -10,14 +10,17 @@ import { ExampleList } from "../../components/Example";
 import { IndexesDropdown } from "../../components/IndexesDropdown";
 import { LibraryManagementPanel } from "../../components/LibraryManagementPanel";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
+import { AIParameterButton } from "../../components/AIParameterButton";
 import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
 import { LibraryManagementButton } from "../../components/LibraryManagementButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
 import { DeveloperSettingsPanel } from "../../components/DeveloperSettingsPanel/DeveloperSettingsPanel";
+import AIParameterPanel from "../../components/AIParameterPanel/AIParameterPanel";
 
 const OneShot = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
+    const [isAIParameterPanelOpen, setIsAIParameterPanelOpen] = useState(false);
     const [approach, setApproach] = useState<Approaches>(Approaches.ReadRetrieveReadVector);
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [promptTemplatePrefix, setPromptTemplatePrefix] = useState<string>("");
@@ -45,6 +48,24 @@ const OneShot = () => {
     useEffect(() => {
         getIndexes();
     }, []);
+    
+    // Load target library from localStorage and update index
+    useEffect(() => {
+        try {
+            const targetLibrary = localStorage.getItem('target_library');
+            if (targetLibrary && indexes.length > 0) {
+                const isValidLibrary = indexes.some(idx => idx.key === targetLibrary);
+                if (isValidLibrary) {
+                    setIndex(targetLibrary);
+                    console.log("[DEBUG] Set target library from localStorage:", targetLibrary);
+                } else {
+                    console.log("[DEBUG] Target library from localStorage not found in available indexes:", targetLibrary);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading target library:', error);
+        }
+    }, [indexes]);
     
     const onIndexChanged = (index: string) => {
         console.log("index changed to: " + index);
@@ -102,6 +123,20 @@ const OneShot = () => {
         setActiveAnalysisPanelTab(undefined);
 
         try {
+            // Check for target library from localStorage before making request
+            let selectedIndex = index;
+            try {
+                const targetLibrary = localStorage.getItem('target_library');
+                if (targetLibrary && indexes.some(idx => idx.key === targetLibrary)) {
+                    selectedIndex = targetLibrary;
+                    console.log("[DEBUG] Using target library for request:", targetLibrary);
+                } else {
+                    console.log("[DEBUG] No valid target library found, using default index:", selectedIndex);
+                }
+            } catch (e) {
+                console.warn("Error reading target library from localStorage:", e);
+            }
+
             const request: AskRequest = {
                 question,
                 approach,
@@ -111,11 +146,12 @@ const OneShot = () => {
                     promptTemplateSuffix: promptTemplateSuffix.length === 0 ? undefined : promptTemplateSuffix,
                     excludeCategory: excludeCategory.length === 0 ? undefined : excludeCategory,
                     top: retrieveCount,
-                    index,
+                    index: selectedIndex,
                     semanticRanker: useSemanticRanker,
                     semanticCaptions: useSemanticCaptions
                 }
             };
+            console.log("[DEBUG] Making API request with index:", selectedIndex);
             const result = await askApi(request);
             setAnswer(result);
         } catch (e) {
@@ -191,19 +227,20 @@ const OneShot = () => {
         <div className={styles.oneshotContainer}>
             <div className={styles.oneshotTopSection}>
                 <div className={styles.commandsContainer}>
+                    <AIParameterButton className={styles.commandButton} onClick={() => setIsAIParameterPanelOpen(true)} />
                     <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
                     <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                     <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
                 </div>
                 <h1 className={styles.oneshotTitle}>Ask your video library</h1>
                 <h3 className={styles.oneshotSubTitle}>
-                    <div>This is an example of how AI can find answers from your video library. </div>
+                    <div>This is a platform of AI can find answers from your video library. </div>
                     <div>AI-generated content can have mistakes. Make sure it’s accurate and appropriate before using it.</div>
                 </h3>
                 <div className={styles.oneshotQuestionInput}>
                     <QuestionInput
                         question={question}
-                        placeholder="Example: How many lnguages are supported?"
+                        placeholder="Tips: Go to Conversation Settings to pick up a Target Library first."
                         disabled={isAskLoading || isLoading}
                         onSend={question => makeApiRequest(question)}
                     />
@@ -244,14 +281,15 @@ const OneShot = () => {
                 <Spinner className={styles.loadingIndexes} label="Loading" />
             )}
             <Panel
-                headerText="Developer Settings"
+                headerText="Conversation Settings"
                 isOpen={isConfigPanelOpen}
                 isBlocking={false}
                 onDismiss={() => setIsConfigPanelOpen(false)}
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsConfigPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
-                customWidth="800px"
+                type={PanelType.custom}
+                customWidth="40%"
             >
                 <div className={styles.configSection}>
                     <DeveloperSettingsPanel indexes={indexes} />
@@ -266,7 +304,8 @@ const OneShot = () => {
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsLibraryPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
-                customWidth="700px"
+                customWidth="40%"
+                type={PanelType.custom}
             >
                 <div className={styles.configSection}>
                     <LibraryManagementPanel 
@@ -275,6 +314,12 @@ const OneShot = () => {
                     />
                 </div>
             </Panel>
+
+            <AIParameterPanel 
+                isOpen={isAIParameterPanelOpen}
+                onDismiss={() => setIsAIParameterPanelOpen(false)}
+                availableLibraries={indexes.map(idx => ({ key: String(idx.key), text: idx.text }))}
+            />
         </div>
     );
 };

@@ -61,10 +61,16 @@ class RetrieveThenReadVectorApproach(Approach):
         retrieval_n = overrides.get("top", self.top_n)
 
         if db_name is not None and self.prompt_content_db.db_name != db_name:
+            print(f"[DEBUG] Switching database from {self.prompt_content_db.db_name} to {db_name}")
             self.prompt_content_db.set_db(db_name)
+        else:
+            print(f"[DEBUG] Using current database: {self.prompt_content_db.db_name}")
 
         embeddings_vector = self.language_models.get_text_embeddings(q)
         docs_by_id, results_content = self.prompt_content_db.vector_search(embeddings_vector, n_results=retrieval_n)
+        print(f"[DEBUG] Vector search returned {len(results_content)} results")
+        print(f"[DEBUG] First few characters of results: {[r[:100] + '...' if len(r) > 100 else r for r in results_content[:2]]}")
+        
         all_content = "\n".join(results_content)
 
         sys_prompt = overrides.get("sys_prompt", self.system_prompt)
@@ -72,9 +78,10 @@ class RetrieveThenReadVectorApproach(Approach):
 
         temperature = overrides.get("temperature", self.temperature)
         top_p = overrides.get("top_p", self.top_p)
+        max_tokens = overrides.get("max_tokens", None)
 
         completion = self.language_models.chat(sys_prompt=sys_prompt, user_prompt=user_prompt, temperature=temperature,
-                                               top_p=top_p)
+                                               top_p=top_p, max_tokens=max_tokens)
 
         result = {"data_points": results_content,  # List of search results
                   "answer": completion,    # Chat GPT answer

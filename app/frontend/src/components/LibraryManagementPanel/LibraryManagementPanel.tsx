@@ -37,13 +37,16 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
             });
             
             if (!response.ok) {
-                throw new Error("Failed to create library");
+                // Get detailed error message from response
+                const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
             }
             
             setNewLibraryName("");
             onLibrariesChanged();
             showMessage(`Library "${libraryName}" created successfully!`, MessageBarType.success);
         } catch (error) {
+            console.error('Library creation error:', error);
             showMessage(`Failed to create library: ${error}`, MessageBarType.error);
         } finally {
             setIsProcessing(false);

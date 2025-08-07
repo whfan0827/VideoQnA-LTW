@@ -100,7 +100,7 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
 
     ### Initialization ###
     try:
-        # .env 檔案在 backend 目錄中
+        # .env file is in the backend directory
         env_path = Path(__file__).parent.parent / ".env"
         config = dotenv_values(env_path)
         print(f"Loading .env from: {env_path}")

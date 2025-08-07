@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 class LanguageModels(ABC):
@@ -32,5 +33,5 @@ class LanguageModels(ABC):
         pass
 
     @abstractmethod
-    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0) -> str:
+    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0, max_tokens: Optional[int] = None) -> str:
         pass

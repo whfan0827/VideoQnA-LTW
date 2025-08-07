@@ -16,7 +16,7 @@ export const IndexesDropdown = ({ indexes, selectedIndex, onIndexChanged }: Prop
         }
     };
     
-    // 添加調試信息
+    // Add debug information
     console.log("IndexesDropdown render - selectedIndex: ", selectedIndex);
     console.log("IndexesDropdown render - indexes: ", indexes);
     

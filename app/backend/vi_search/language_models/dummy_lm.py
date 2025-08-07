@@ -1,4 +1,5 @@
 from .language_models import LanguageModels
+from typing import Optional
 
 
 class DummyLanguageModels(LanguageModels):
@@ -33,14 +34,15 @@ class DummyLanguageModels(LanguageModels):
         assert len(vector) == self.embeddings_size
         return vector
 
-    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0) -> str:
+    def chat(self, sys_prompt: str, user_prompt: str, temperature: float, top_p: float = 1.0, max_tokens: Optional[int] = None) -> str:
         ''' Dummy chat model - echo back the input prompt.
 
         :param sys_prompt: The system prompt to chat with
         :param user_prompt: The user prompt to chat with
         :param temperature: The temperature to use for chat
         :param top_p: The top_p to use for chat
+        :param max_tokens: The maximum number of tokens to generate
         '''
 
-        response = f"Let me just repeat your input:\n[{sys_prompt=}], [{user_prompt=}], [{temperature=}], [{top_p=}]"
+        response = f"Let me just repeat your input:\n[{sys_prompt=}], [{user_prompt=}], [{temperature=}], [{top_p=}], [{max_tokens=}]"
         return response
