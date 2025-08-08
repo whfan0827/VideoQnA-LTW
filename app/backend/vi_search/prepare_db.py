@@ -85,6 +85,23 @@ class CustomEncoder(json.JSONEncoder):
 def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_content_db: PromptContentDB,
                use_videos_ids_cache=True, video_ids_cache_file='videos_ids_cache.json', verbose=False, 
                single_video_file=None):
+    # Wrapper for backward compatibility
+    return prepare_db_with_progress(
+        db_name=db_name,
+        data_dir=data_dir,
+        language_models=language_models,
+        prompt_content_db=prompt_content_db,
+        use_videos_ids_cache=use_videos_ids_cache,
+        video_ids_cache_file=video_ids_cache_file,
+        verbose=verbose,
+        single_video_file=single_video_file,
+        progress_callback=None
+    )
+
+
+def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels, prompt_content_db: PromptContentDB,
+                           use_videos_ids_cache=True, video_ids_cache_file='videos_ids_cache.json', verbose=False, 
+                           single_video_file=None, progress_callback=None):
 
     # If single_video_file is provided, process only that file
     if single_video_file:
@@ -97,6 +114,9 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
             videos.extend(list(data_dir.glob(ext)))
     
     video_ids_cache_file = Path(video_ids_cache_file)
+
+    if progress_callback:
+        progress_callback("Initializing Video Indexer client...", 10)
 
     ### Initialization ###
     try:
@@ -115,6 +135,9 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
 
     client = init_video_indexer_client(config)
 
+    if progress_callback:
+        progress_callback("Uploading to Azure Video Indexer...", 20)
+
     ### Indexing Videos or getting indexed videos IDs ###
     if use_videos_ids_cache and video_ids_cache_file.exists():
         print(f"Using cached videos IDs from {video_ids_cache_file}")
@@ -127,7 +150,13 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
             print(f"Saving videos IDs to {video_ids_cache_file}")
             video_ids_cache_file.write_text(json.dumps(videos_ids, cls=CustomEncoder))
 
+    if progress_callback:
+        progress_callback("Waiting for Video Indexer processing...", 30)
+
     wait_for_videos_processing(client, videos_ids, timeout=600)
+
+    if progress_callback:
+        progress_callback("Retrieving video insights and content...", 50)
 
     ### Getting indexed videos prompt content ###
     videos_prompt_content = client.get_collection_prompt_content(list(videos_ids.values()))
@@ -142,14 +171,36 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
 
     embeddings_size = language_models.get_embeddings_size()
 
+    if progress_callback:
+        progress_callback("Generating embeddings and preparing content...", 70)
+
     ### Adding prompt content sections ###
     account_details = client.get_account_details()
     sections_generator = get_sections_generator(videos_prompt_content, account_details, embedding_cb=language_models.get_text_embeddings,
                                                 embeddings_col_name=VECTOR_FIELD_NAME)
 
+    if progress_callback:
+        progress_callback("Creating database and storing vectors...", 80)
+
     ### Creating new DB ###
     prompt_content_db.create_db(db_name, vector_search_dimensions=embeddings_size)
-    prompt_content_db.add_sections_to_db(sections_generator, upload_batch_size=100, verbose=verbose)
+    
+    # Enhanced section storage with progress tracking
+    if progress_callback:
+        sections_list = list(sections_generator)  # Convert generator to list for progress tracking
+        total_sections = len(sections_list)
+        
+        def progress_sections_generator():
+            for i, section in enumerate(sections_list):
+                if i % 10 == 0:  # Update every 10 sections
+                    current_progress = 80 + int((i / total_sections) * 15)  # 80-95% range
+                    progress_callback(f"Storing section {i+1}/{total_sections} to database...", current_progress)
+                yield section
+        
+        prompt_content_db.add_sections_to_db(progress_sections_generator(), upload_batch_size=100, verbose=verbose)
+        progress_callback("Processing completed successfully", 100)
+    else:
+        prompt_content_db.add_sections_to_db(sections_generator, upload_batch_size=100, verbose=verbose)
 
     print("Done adding sections to DB. Exiting...")
 

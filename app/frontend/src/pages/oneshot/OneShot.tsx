@@ -304,7 +304,7 @@ const OneShot = () => {
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsLibraryPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
-                customWidth="40%"
+                customWidth="60%"
                 type={PanelType.custom}
             >
                 <div className={styles.configSection}>

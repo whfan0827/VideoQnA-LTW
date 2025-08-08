@@ -1,6 +1,8 @@
 import logging
 import os
 import json
+import re
+import uuid
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -18,7 +20,8 @@ from vi_search.prepare_db import prepare_db
 from vi_search.constants import BASE_DIR, DATA_DIR
 from services.settings_service import SettingsService
 from services.ai_template_service import AITemplateService, init_ai_templates_database
-from database.init_db import init_database
+from task_manager import task_manager
+from database.app_data_manager import db_manager
 from database.init_db import init_database
 
 
@@ -177,7 +180,7 @@ def delete_library(library_name):
 
 @app.route("/upload", methods=["POST"])
 def upload_video():
-    """Upload video to a specific library"""
+    """Upload video to a specific library - Async processing"""
     try:
         if 'video' not in request.files:
             return jsonify({"error": "No video file provided"}), 400
@@ -196,24 +199,176 @@ def upload_video():
         if library_name not in available_dbs:
             return jsonify({"error": "Library not found"}), 404
         
+        # Handle filename processing - Chinese filenames get UUID, English keep secure_filename
+        original_filename = video_file.filename
+        file_extension = Path(original_filename).suffix.lower()
+        
+        # Check if filename contains Chinese characters
+        if re.search(r'[\u4e00-\u9fff]', original_filename):
+            # Chinese filename: use UUID + extension
+            safe_filename = f"{uuid.uuid4().hex[:12]}{file_extension}"
+            logging.info(f"Chinese filename detected: '{original_filename}' -> '{safe_filename}'")
+        else:
+            # English filename: use secure_filename
+            safe_filename = secure_filename(original_filename)
+            logging.info(f"English filename processed: '{original_filename}' -> '{safe_filename}'")
+        
         # Save uploaded file
-        filename = secure_filename(video_file.filename)
-        upload_path = DATA_DIR / filename
+        upload_path = DATA_DIR / safe_filename
         video_file.save(upload_path)
         
-        # Process single video file with existing prepare_db logic
-        # This processes the specific uploaded file
-        try:
-            prepare_db(library_name, DATA_DIR, language_models, prompt_content_db, 
-                      use_videos_ids_cache=False, verbose=True, single_video_file=upload_path)
-        except Exception as prep_error:
-            logging.exception("Exception in prepare_db during upload")
-            return jsonify({"error": f"Video processing failed: {str(prep_error)}"}), 500
+        # Create task (async processing) - pass both original and safe filenames
+        task_id = task_manager.create_upload_task(original_filename, library_name, str(upload_path))
         
-        return jsonify({"message": f"Video '{filename}' uploaded and processed successfully"}), 200
+        return jsonify({
+            "task_id": task_id,
+            "message": f"Upload started for {original_filename}",
+            "status": "accepted"
+        }), 202  # HTTP 202 Accepted
         
     except Exception as e:
         logging.exception("Exception in /upload")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/tasks/<task_id>", methods=["GET"])
+def get_task_status(task_id: str):
+    """Get status of a specific task"""
+    task = task_manager.get_task(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    
+    return jsonify(task.to_dict())
+
+
+@app.route("/tasks", methods=["GET"])
+def list_tasks():
+    """List all tasks"""
+    # Get query parameters
+    status_filter = request.args.get('status')  # Optional status filter
+    active_only = request.args.get('active') == 'true'  # Show only active tasks
+    
+    if active_only:
+        tasks = task_manager.list_active_tasks()
+    else:
+        tasks = task_manager.list_all_tasks()
+    
+    # Apply status filter if provided
+    if status_filter:
+        tasks = [task for task in tasks if task.status.value == status_filter]
+    
+    return jsonify({
+        "tasks": [task.to_dict() for task in tasks],
+        "total": len(tasks)
+    })
+
+
+@app.route("/tasks/<task_id>/cancel", methods=["POST"])
+def cancel_task(task_id: str):
+    """Cancel a specific task"""
+    logging.info(f"Attempting to cancel task: {task_id}")
+    
+    # Check if task exists
+    task = task_manager.get_task(task_id)
+    if not task:
+        logging.warning(f"Task {task_id} not found for cancellation")
+        return jsonify({"error": "Task not found"}), 404
+    
+    logging.info(f"Task {task_id} current status: {task.status}")
+    
+    success = task_manager.cancel_task(task_id)
+    if success:
+        logging.info(f"Task {task_id} cancelled successfully")
+        return jsonify({"message": "Task cancelled successfully"})
+    else:
+        logging.warning(f"Failed to cancel task {task_id}")
+        return jsonify({"error": "Cannot cancel task or task not found"}), 400
+
+
+@app.route("/tasks/<task_id>", methods=["DELETE"])
+def delete_task(task_id: str):
+    """Delete/Remove a specific task"""
+    success = task_manager.remove_task(task_id)
+    if success:
+        return jsonify({"message": "Task removed successfully"})
+    else:
+        return jsonify({"error": "Task not found"}), 404
+
+
+@app.route("/libraries/<library_name>/videos", methods=["GET"])
+def list_library_videos(library_name):
+    """Get all videos in a specific library"""
+    try:
+        # Check if library exists
+        available_dbs = prompt_content_db.get_available_dbs()
+        if library_name not in available_dbs:
+            return jsonify({"error": "Library not found"}), 404
+        
+        # Get videos from database
+        videos = db_manager.get_library_videos(library_name)
+        
+        return jsonify({
+            "library_name": library_name,
+            "videos": videos,
+            "total": len(videos)
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in /libraries/<library>/videos GET")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/<library_name>/videos/<video_id>", methods=["DELETE"])
+def delete_video(library_name, video_id):
+    """Delete a specific video from a library"""
+    try:
+        # Check if library exists
+        available_dbs = prompt_content_db.get_available_dbs()
+        if library_name not in available_dbs:
+            return jsonify({"error": "Library not found"}), 404
+        
+        # Create deletion task
+        task_id = task_manager.create_video_delete_task(library_name, video_id)
+        
+        return jsonify({
+            "task_id": task_id,
+            "message": f"Video deletion started for {video_id}",
+            "status": "accepted"
+        }), 202
+        
+    except Exception as e:
+        logging.exception(f"Exception in delete video {video_id}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/<library_name>/videos/batch-delete", methods=["POST"])
+def batch_delete_videos(library_name):
+    """Delete multiple videos from a library"""
+    try:
+        data = request.get_json()
+        if not data or 'video_ids' not in data:
+            return jsonify({"error": "video_ids list is required"}), 400
+        
+        video_ids = data['video_ids']
+        if not video_ids:
+            return jsonify({"error": "At least one video_id is required"}), 400
+        
+        # Check if library exists
+        available_dbs = prompt_content_db.get_available_dbs()
+        if library_name not in available_dbs:
+            return jsonify({"error": "Library not found"}), 404
+        
+        # Create batch deletion task
+        task_id = task_manager.create_batch_delete_task(library_name, video_ids)
+        
+        return jsonify({
+            "task_id": task_id,
+            "message": f"Batch deletion started for {len(video_ids)} videos",
+            "status": "accepted"
+        }), 202
+        
+    except Exception as e:
+        logging.exception(f"Exception in batch delete videos")
         return jsonify({"error": str(e)}), 500
 
 

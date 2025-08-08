@@ -1,0 +1,36 @@
+.videoListContainer {
+    padding: 16px;
+}
+
+.commandBar {
+    margin-bottom: 16px;
+}
+
+.emptyState {
+    padding: 40px 20px;
+    text-align: center;
+    color: #605e5c;
+    font-size: 14px;
+}
+
+.loadingContainer {
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.statusBadge {
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.statusBadge.indexed {
+    color: #107c10;
+}
+
+.statusBadge.processing {
+    color: #0078d4;
+}
+
+.statusBadge.error {
+    color: #d13438;
+}

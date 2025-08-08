@@ -1,7 +1,7 @@
 import sqlite3
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from database.init_db import get_connection
+from database.database_manager import db_manager
 from models import AITemplate
 import threading
 import time
@@ -24,7 +24,7 @@ class AITemplateService:
                     return list(self._cache.values())
             
             # Load from database
-            with get_connection() as conn:
+            with db_manager.get_settings_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT * FROM ai_templates 
@@ -79,7 +79,7 @@ class AITemplateService:
             raise ValueError('; '.join(errors))
         
         # Save to database
-        with get_connection() as conn:
+        with db_manager.get_settings_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO ai_templates 
@@ -140,7 +140,7 @@ class AITemplateService:
             raise ValueError('; '.join(errors))
         
         # Update in database
-        with get_connection() as conn:
+        with db_manager.get_settings_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE ai_templates SET
@@ -188,7 +188,7 @@ class AITemplateService:
             raise ValueError("Cannot delete system default templates")
         
         # Delete from database
-        with get_connection() as conn:
+        with db_manager.get_settings_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 DELETE FROM ai_templates 
@@ -258,7 +258,7 @@ def init_ai_templates_database():
     with open(schema_path, 'r', encoding='utf-8') as f:
         schema = f.read()
     
-    with get_connection() as conn:
+    with db_manager.get_settings_connection() as conn:
         conn.executescript(schema)
         conn.commit()
         print("AI templates database initialized successfully")

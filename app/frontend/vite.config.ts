@@ -16,6 +16,7 @@ export default defineConfig({
             "/indexes": "http://localhost:5000",
             "/libraries": "http://localhost:5000",
             "/upload": "http://localhost:5000",
+            "/tasks": "http://localhost:5000",
             "/settings": "http://localhost:5000",
             "/api": "http://localhost:5000"
         }
