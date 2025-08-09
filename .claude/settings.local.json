@@ -7,7 +7,9 @@
       "Bash(mkdir:*)",
       "Bash(python test_hash_cache.py:*)",
       "Bash(rm:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(find:*)",
+      "Bash(true)"
     ],
     "deny": []
   }
