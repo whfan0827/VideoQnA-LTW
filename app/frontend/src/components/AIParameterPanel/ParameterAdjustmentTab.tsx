@@ -46,7 +46,9 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
   isLoading,
   setIsLoading,
 }) => {
-  const [selectedLibrary, setSelectedLibrary] = useState<string>('');
+  const [selectedLibrary, setSelectedLibrary] = useState<string>(() => {
+    return localStorage.getItem('aiParameters_selectedLibrary') || '';
+  });
   const [parameters, setParameters] = useState<AIParameters>({
     model: 'gpt-4o',
     temperature: 0.7,
@@ -69,6 +71,15 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
   useEffect(() => {
     if (selectedLibrary) {
       loadParameters();
+    }
+  }, [selectedLibrary]);
+
+  // Persist selectedLibrary to localStorage
+  useEffect(() => {
+    if (selectedLibrary) {
+      localStorage.setItem('aiParameters_selectedLibrary', selectedLibrary);
+    } else {
+      localStorage.removeItem('aiParameters_selectedLibrary');
     }
   }, [selectedLibrary]);
 

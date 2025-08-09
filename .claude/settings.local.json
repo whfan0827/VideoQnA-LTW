@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api-portal.videoindexer.ai)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "mcp__ide__getDiagnostics",
+      "Bash(mkdir:*)",
+      "Bash(python test_hash_cache.py:*)",
+      "Bash(rm:*)",
+      "Bash(sqlite3:*)"
+    ],
+    "deny": []
+  }
+}

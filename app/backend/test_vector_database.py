@@ -2,7 +2,6 @@
 """
 Test script to check ChromaDB content and vector search functionality
 """
-import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -42,15 +41,16 @@ def test_chromadb_content():
                 
                 # Get collection data to see what's in it
                 collection_data = chroma_db.get_collection_data()
-                doc_count = len(collection_data['ids']) if collection_data['ids'] else 0
+                doc_count = len(collection_data['ids']) if collection_data.get('ids') else 0
                 print(f"   📊 Document count: {doc_count}")
                 
                 if doc_count > 0:
                     # Show first few documents
                     print(f"   📄 First 3 documents:")
                     for i in range(min(3, doc_count)):
-                        doc_id = collection_data['ids'][i]
-                        doc_content = collection_data['documents'][i][:100] + "..." if len(collection_data['documents'][i]) > 100 else collection_data['documents'][i]
+                        doc_id = collection_data['ids'][i] if collection_data.get('ids') and i < len(collection_data['ids']) else f"doc_{i}"
+                        doc_text = collection_data['documents'][i] if collection_data.get('documents') and i < len(collection_data['documents']) else ""
+                        doc_content = (doc_text[:100] + "...") if doc_text and len(doc_text) > 100 else (doc_text or "No content")
                         print(f"      [{doc_id}]: {doc_content}")
                 
                 # Test vector search with a sample query
@@ -61,7 +61,7 @@ def test_chromadb_content():
                 test_query = "how to set up YASKAWA GA700"
                 query_embedding = lm.get_text_embeddings(test_query)
                 
-                docs_by_id, results_content = chroma_db.vector_search(query_embedding, n_results=3)
+                _, results_content = chroma_db.vector_search(query_embedding, n_results=3)
                 
                 print(f"   📝 Query: {test_query}")
                 print(f"   🎯 Search results found: {len(results_content)}")

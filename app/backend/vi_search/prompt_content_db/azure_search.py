@@ -247,3 +247,39 @@ class AzureVectorSearch(PromptContentDB):
                 raise RuntimeError("The count of the results is not equal to the count of the documents in the index")
 
         return results
+
+    def delete_video_documents(self, video_id: str) -> bool:
+        """
+        Delete all documents belonging to a specific video from the Azure Search index.
+        
+        :param video_id: The video ID to delete documents for
+        :return: True if deletion was successful, False otherwise
+        """
+        try:
+            # Search for documents with the specific video_id
+            search_results = self.db_handle.search(
+                search_text="*",
+                filter=f"video_id eq '{video_id}'",
+                select=["id"],  # Only need the ID field
+                top=1000  # Set a reasonable limit
+            )
+            
+            # Collect document IDs to delete
+            documents_to_delete = []
+            count = 0
+            for result in search_results:
+                documents_to_delete.append({"id": result["id"]})
+                count += 1
+            
+            if documents_to_delete:
+                # Perform batch deletion
+                result = self.db_handle.delete_documents(documents_to_delete)
+                logger.info(f"Deleted {count} documents for video {video_id}")
+                return True
+            else:
+                logger.warning(f"No documents found for video {video_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to delete documents for video {video_id}: {e}")
+            return False

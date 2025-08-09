@@ -1,10 +1,3 @@
-"""
-Legacy Application Data Manager
-
-This module is moved from the root backend directory for better organization.
-It provides task and video management functionality.
-"""
-
 import sqlite3
 import logging
 from datetime import datetime
@@ -15,8 +8,8 @@ import json
 logger = logging.getLogger(__name__)
 
 class TaskDatabase:
-    """Database manager for task-related operations"""
-    
+    """Database manager for task-related operations."""
+
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
             backend_dir = Path(__file__).parent.parent
@@ -24,14 +17,12 @@ class TaskDatabase:
         else:
             self.db_path = Path(db_path)
         self._init_database()
-    
+
     def _init_database(self):
-        """Initialize database and create tables"""
+        """Initialize the task database and create tables."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
-                
-                # Create tasks table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS tasks (
                         task_id TEXT PRIMARY KEY,
@@ -49,16 +40,14 @@ class TaskDatabase:
                         metadata TEXT
                     )
                 """)
-                
                 conn.commit()
                 logger.info("Task database initialized successfully")
-                
         except Exception as e:
             logger.error(f"Failed to initialize task database: {e}")
             raise
-    
+
     def save_task(self, task_data: Dict[str, Any]) -> bool:
-        """Save or update task in database"""
+        """Save or update a task in the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
@@ -67,7 +56,8 @@ class TaskDatabase:
                      library_name, file_path, created_at, started_at, completed_at, 
                      error_message, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                """,
+                (
                     task_data.get('task_id'),
                     task_data.get('task_type'),
                     task_data.get('status'),
@@ -89,16 +79,14 @@ class TaskDatabase:
             return False
 
     def get_all_tasks(self) -> List[Dict[str, Any]]:
-        """Get all tasks from database"""
+        """Retrieve all tasks from the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC")
-                
                 tasks = []
                 for row in cursor.fetchall():
                     task = dict(row)
-                    # Parse metadata JSON
                     if task['metadata']:
                         try:
                             task['metadata'] = json.loads(task['metadata'])
@@ -107,15 +95,14 @@ class TaskDatabase:
                     else:
                         task['metadata'] = {}
                     tasks.append(task)
-                
                 return tasks
         except Exception as e:
             logger.error(f"Failed to get all tasks: {e}")
             return []
 
 class VideoDatabase:
-    """Database manager for video-related operations"""
-    
+    """Database manager for video-related operations."""
+
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
             backend_dir = Path(__file__).parent.parent
@@ -123,14 +110,12 @@ class VideoDatabase:
         else:
             self.db_path = Path(db_path)
         self._init_database()
-    
+
     def _init_database(self):
-        """Initialize database and create tables"""
+        """Initialize the video database and create tables."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
-                
-                # Create video_index table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS video_index (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,20 +132,16 @@ class VideoDatabase:
                         UNIQUE(filename, library_name)
                     )
                 """)
-                
-                # Create indexes
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_video_library ON video_index(library_name)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_video_status ON video_index(status)")
-                
                 conn.commit()
                 logger.info("Video database initialized successfully")
-                
         except Exception as e:
             logger.error(f"Failed to initialize video database: {e}")
             raise
 
     def get_library_videos(self, library_name: str) -> List[Dict[str, Any]]:
-        """Get all videos for a library"""
+        """Retrieve all videos for a given library from the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -168,11 +149,9 @@ class VideoDatabase:
                     "SELECT * FROM video_index WHERE library_name = ? ORDER BY created_at DESC",
                     (library_name,)
                 )
-                
                 videos = []
                 for row in cursor.fetchall():
                     video = dict(row)
-                    # Parse metadata JSON
                     if video['metadata']:
                         try:
                             video['metadata'] = json.loads(video['metadata'])
@@ -181,44 +160,13 @@ class VideoDatabase:
                     else:
                         video['metadata'] = {}
                     videos.append(video)
-                
                 return videos
         except Exception as e:
             logger.error(f"Failed to get videos for library {library_name}: {e}")
             return []
 
-# Backwards compatibility - create global instance
-class DatabaseManager:
-    """Legacy wrapper for backwards compatibility"""
-    
-    def __init__(self, db_path: str = "app_data.db"):
-        backend_dir = Path(__file__).parent.parent
-        self.db_path = backend_dir / db_path
-        self.task_db = TaskDatabase(str(self.db_path))
-        self.video_db = VideoDatabase(str(self.db_path))
-    
-    def save_task(self, task_data: Dict[str, Any]) -> bool:
-        return self.task_db.save_task(task_data)
-    
-    def get_all_tasks(self) -> List[Dict[str, Any]]:
-        return self.task_db.get_all_tasks()
-    
-    def get_library_videos(self, library_name: str) -> List[Dict[str, Any]]:
-        return self.video_db.get_library_videos(library_name)
-    
-    def delete_task(self, task_id: str) -> bool:
-        """Delete task from database"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
-                conn.commit()
-                return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Failed to delete task {task_id}: {e}")
-            return False
-    
     def save_video_record(self, video_data: Dict[str, Any]) -> bool:
-        """Save video record to database"""
+        """Save a video record to the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
@@ -226,7 +174,8 @@ class DatabaseManager:
                     (filename, original_path, library_name, video_id, status, 
                      file_size, duration, created_at, indexed_at, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                """,
+                (
                     video_data.get('filename'),
                     video_data.get('original_path'),
                     video_data.get('library_name'),
@@ -243,9 +192,9 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to save video record: {e}")
             return False
-    
+
     def mark_video_deleted(self, library_name: str, video_id: str) -> bool:
-        """Mark video as deleted in database"""
+        """Mark a video as deleted in the database (soft delete)."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute("""
@@ -258,6 +207,66 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to mark video as deleted {video_id}: {e}")
             return False
+
+    def delete_video_record(self, library_name: str, video_id: Optional[str] = None, filename: Optional[str] = None) -> bool:
+        """Physically delete a video record from the database."""
+        if not video_id and not filename:
+            logger.error("Either video_id or filename must be provided for deletion.")
+            return False
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                if video_id:
+                    cursor = conn.execute(
+                        "DELETE FROM video_index WHERE library_name = ? AND video_id = ?",
+                        (library_name, video_id)
+                    )
+                else:
+                    cursor = conn.execute(
+                        "DELETE FROM video_index WHERE library_name = ? AND filename = ?",
+                        (library_name, filename)
+                    )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to physically delete video record: {e}")
+            return False
+
+class DatabaseManager:
+    """Legacy wrapper for backwards compatibility."""
+
+    def __init__(self, db_path: str = "app_data.db"):
+        backend_dir = Path(__file__).parent.parent
+        self.db_path = backend_dir / db_path
+        self.task_db = TaskDatabase(str(self.db_path))
+        self.video_db = VideoDatabase(str(self.db_path))
+
+    def save_task(self, task_data: Dict[str, Any]) -> bool:
+        return self.task_db.save_task(task_data)
+
+    def get_all_tasks(self) -> List[Dict[str, Any]]:
+        return self.task_db.get_all_tasks()
+
+    def get_library_videos(self, library_name: str) -> List[Dict[str, Any]]:
+        return self.video_db.get_library_videos(library_name)
+
+    def delete_task(self, task_id: str) -> bool:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to delete task {task_id}: {e}")
+            return False
+
+    def save_video_record(self, video_data: Dict[str, Any]) -> bool:
+        return self.video_db.save_video_record(video_data)
+
+    def mark_video_deleted(self, library_name: str, video_id: str) -> bool:
+        return self.video_db.mark_video_deleted(library_name, video_id)
+
+    def delete_video_record(self, library_name: str, video_id: Optional[str] = None, filename: Optional[str] = None) -> bool:
+        return self.video_db.delete_video_record(library_name, video_id, filename)
 
 # Global instances
 db_manager = DatabaseManager()

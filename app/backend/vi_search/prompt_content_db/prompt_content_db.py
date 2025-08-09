@@ -62,6 +62,16 @@ class PromptContentDB(ABC):
         ''' Search for the `n_results` closest embeddings to the given vector. '''
         pass
 
+    @abstractmethod
+    def delete_video_documents(self, video_id: str) -> bool:
+        """
+        Delete all documents belonging to a specific video from the database.
+        
+        :param video_id: The video ID to delete documents for
+        :return: True if deletion was successful, False otherwise
+        """
+        pass
+
 
 def nonewlines(s: str) -> str:
     return s.replace('\n', ' ').replace('\r', ' ')

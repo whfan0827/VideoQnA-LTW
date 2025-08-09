@@ -1,59 +1,125 @@
-# Video Indexer Archive Q&A using LLM, Vector DB, Azure OpenAI, Azure AI Search, and ChromaDB
+# VideoQnA-LTW: Video Archive Q&A with RAG
 
-This sample is a Video Archive Q&A that uses the Retrieval Augmented Generation (RAG) pattern with your own Azure AI Video Indexer indexed data. It uses Azure OpenAI Service to access the ChatGPT model, and Azure AI Search or ChromaDB for data indexing and retrieval.
+**A production-ready Video Archive Q&A application using Retrieval Augmented Generation (RAG)** that integrates Azure AI Video Indexer, Azure OpenAI, and vector databases for intelligent video content analysis and querying.
 
-The repo includes sample data so it's ready to try end-to-end. The sample we use is an Azure AI Video Indexer introduction video, so you can actually use it to learn more about the product.
+## ✨ Key Features
+
+- **🎥 Video Intelligence**: Automated video processing with Azure Video Indexer
+- **🤖 AI-Powered Q&A**: Natural language queries with contextual video responses  
+- **⚡ Smart Caching**: File hash-based duplicate detection system
+- **📊 Task Management**: Background processing with real-time progress tracking
+- **🔍 Multi-Database Support**: Azure AI Search and ChromaDB vector databases
+- **🎯 Template System**: Customizable AI response templates for different use cases
+- **📱 Modern UI**: React frontend with Fluent UI components
 
 ![RAG Architecture](docs/ask_your_archive.jpg)
 
-## Features
+## 🏗️ Architecture Overview
 
-- Q&A interface
-- Explores various options to help users evaluate the trustworthiness of responses with citations, tracking of source content, etc.
-- Player integration to jump directly to the answer relevant part in the video.
+### Backend (Python/Flask)
+- **vi_search/**: Core RAG functionality with video processing pipeline
+- **task_manager.py**: Asynchronous task processing with retry logic
+- **database/**: SQLite managers for app data, settings, and AI templates  
+- **services/**: Business logic layer for templates and settings
+- **file_hash_cache.py**: Duplicate detection system (NEW ✨)
 
-## Getting Started
+### Frontend (React/TypeScript)
+- **Fluent UI Components**: Modern, accessible user interface
+- **Real-time Updates**: Task progress tracking and status notifications
+- **Video Player Integration**: Jump directly to relevant timestamps
+- **Library Management**: Upload, organize, and manage video collections
 
-**IMPORTANT:** To deploy and run this example, you must have an **Azure subscription with access enabled for the Azure OpenAI service**. You can request access [here](https://aka.ms/oaiapply). You can also visit [this page](https://azure.microsoft.com/free/cognitive-search/) to get some free Azure credits to get you started.
+## 🚀 Quick Start
 
-**NOTE**: Your Azure Account must have `Microsoft.Authorization/roleAssignments/write` permissions, such as [User Access Administrator](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#user-access-administrator) or [Owner](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles#owner).
+### Option 1: Full Setup with Azure Services
+For production deployment with Azure OpenAI and Azure AI Search.
 
-**AZURE RESOURCE COSTS** by default this sample will create an Azure App Service and Azure AI Search resources that have a monthly cost.
+### Option 2: Local Development Setup  
+For development and testing without Azure costs.
 
-## Prerequisites
+```powershell
+# Clone and navigate to project
+git clone <repository-url>
+cd VideoQnA-LTW
 
-- [PowerShell > 7.4.2](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D?ocid=pdpshare)
-- [Azure Developer CLI](https://aka.ms/azure-dev/install)
-- [Python 3.10](https://www.python.org/downloads/)
-  - **Important**: Python and the pip package manager must be in the path in Windows for the setup scripts to work.
-  - **Important**: Ensure you can run `python --version` from console to check that you have the correct version.
-  - **Important**: On Ubuntu, you might need to run `sudo apt install python-is-python3` to link `python` to `python3`.
-- [Node.js](https://nodejs.org/en/download/)
-- [Git](https://git-scm.com/downloads)
-- [Powershell 7+ (pwsh)](https://github.com/powershell/powershell) - For Windows users only.
-  - **Important**: Ensure you can run `pwsh.exe` from a PowerShell command. If this fails, you likely need to upgrade PowerShell. 
-  `winget install --id Microsoft.Powershell --source winget`
-  `$env:PATH += ";C:\Program Files\PowerShell\7"`
-  `pwsh --version`
-  `[Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::User)`
-- Install Azure Developer CLI (azd) using the command `winget install Microsoft.Azd` and run the following commands:
+# Quick start - sets up everything automatically
+.\start_local.ps1
+```
 
-$azdPath = "C:\Users\Vincent\AppData\Local\Programs\Azure Dev CLI"; if (Test-Path "$azdPath\azd.exe") { $env:PATH += ";$azdPath"; Write-Host "azd 路徑已添加到 PATH"; azd version } else { Write-Host "在預期位置找不到 azd.exe" }
-  - `azd auth login`
-  - `azd env new vi-llm-LTW`
-  # 1. 切换到项目目录
-cd VideoQnA-Demo
+This script will:
+- Create Python virtual environment
+- Install all dependencies  
+- Build React frontend
+- Start Flask backend server
+- Open browser to http://localhost:5000
 
-# 2. 执行脚本
-.\set_env.ps1
+## ⚠️ Important Requirements
 
-# 3. 输入环境名称（当首次运行时）
-输入：vi-llm-ltw
+**Azure Services** (for production):
+- **Azure OpenAI** access enabled ([request here](https://aka.ms/oaiapply))
+- **Azure AI Search** service 
+- **Azure Video Indexer** account
+- Account with `Microsoft.Authorization/roleAssignments/write` permissions
 
-# 4. 验证环境变量
-azd env get-values
+**Cost Notice**: Azure resources have monthly costs - use local development mode for testing.
 
-## Set up and deployment steps
+## 📋 Prerequisites
+
+### Required
+- **Python 3.10+** ([Download](https://www.python.org/downloads/))
+- **Node.js 18+** ([Download](https://nodejs.org/))  
+- **PowerShell 7+** ([Install](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D))
+- **Git** ([Download](https://git-scm.com/downloads))
+
+### For Azure Deployment (Optional)
+- **Azure Developer CLI** (`winget install Microsoft.Azd`)
+- **Azure CLI** (`winget install Microsoft.AzureCLI`)
+
+### Installation Verification
+```powershell
+# Verify all prerequisites
+python --version    # Should show 3.10+
+node --version      # Should show 18+
+pwsh --version      # Should show 7+
+git --version       # Any recent version
+```
+
+## 🛠️ Development Modes
+
+### Test Mode (No Azure Required)
+Perfect for development and testing without any costs:
+
+```powershell
+# Set environment variables for test mode
+$env:LANGUAGE_MODEL = "dummy"
+$env:PROMPT_CONTENT_DB = "chromadb" 
+
+# Start the application  
+.\start_local.ps1
+```
+
+**Test Mode Features:**
+- ✅ All UI components work
+- ✅ Upload and library management  
+- ✅ Mock AI responses for testing
+- ✅ Local ChromaDB vector storage
+- ❌ No real Azure Video Indexer processing
+- ❌ No real AI-powered answers
+
+### Production Mode (Azure Required)
+Full functionality with Azure services:
+
+```powershell
+# Set environment variables for production
+$env:LANGUAGE_MODEL = "openai"
+$env:PROMPT_CONTENT_DB = "azure_search"
+
+# Configure Azure credentials (see setup section below)
+# Start the application
+.\start_local.ps1
+```
+
+## 🏗️ Production Azure Setup
 
 1. **Create resources**
 

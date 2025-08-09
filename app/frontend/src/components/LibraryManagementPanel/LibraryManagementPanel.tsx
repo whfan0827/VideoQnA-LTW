@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
     TextField, 
     PrimaryButton, 
@@ -23,17 +23,67 @@ interface LibraryManagementPanelProps {
 }
 
 export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryManagementPanelProps) => {
-    const [activeTab, setActiveTab] = useState("upload");
+    const [activeTab, setActiveTab] = useState(() => {
+        return localStorage.getItem('libraryManagement_activeTab') || "upload";
+    });
     const [newLibraryName, setNewLibraryName] = useState("");
-    const [selectedLibraryToDelete, setSelectedLibraryToDelete] = useState("");
+    const [selectedLibraryToDelete, setSelectedLibraryToDelete] = useState(() => {
+        return localStorage.getItem('libraryManagement_selectedLibraryToDelete') || "";
+    });
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-    const [selectedUploadLibrary, setSelectedUploadLibrary] = useState("");
-    const [selectedManageLibrary, setSelectedManageLibrary] = useState("");
+    const [selectedUploadLibrary, setSelectedUploadLibrary] = useState(() => {
+        return localStorage.getItem('libraryManagement_selectedUploadLibrary') || "";
+    });
+    const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
+    const [videoUrls, setVideoUrls] = useState<string>('');
+    const [selectedManageLibrary, setSelectedManageLibrary] = useState(() => {
+        return localStorage.getItem('libraryManagement_selectedManageLibrary') || "";
+    });
     const [isProcessing, setIsProcessing] = useState(false);
     const [message, setMessage] = useState<{ text: string; type: MessageBarType } | null>(null);
     
+    // Logs state
+    const [logs, setLogs] = useState<string[]>([]);
+    const [tasksHistory, setTasksHistory] = useState<any[]>([]);
+    const [logsLoading, setLogsLoading] = useState(false);
+    const [logFilter, setLogFilter] = useState({
+        type: 'app',
+        lines: 100,
+        statusFilter: '',
+        days: 7
+    });
+    
     // Task management
     const { tasks, addTask, removeTask, clearCompletedTasks, clearAllTasks, cancelTask, error: taskError } = useTaskManager();
+
+    // Persist state to localStorage
+    useEffect(() => {
+        localStorage.setItem('libraryManagement_activeTab', activeTab);
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (selectedLibraryToDelete) {
+            localStorage.setItem('libraryManagement_selectedLibraryToDelete', selectedLibraryToDelete);
+        } else {
+            localStorage.removeItem('libraryManagement_selectedLibraryToDelete');
+        }
+    }, [selectedLibraryToDelete]);
+
+    useEffect(() => {
+        if (selectedUploadLibrary) {
+            localStorage.setItem('libraryManagement_selectedUploadLibrary', selectedUploadLibrary);
+        } else {
+            localStorage.removeItem('libraryManagement_selectedUploadLibrary');
+        }
+    }, [selectedUploadLibrary]);
+
+    useEffect(() => {
+        if (selectedManageLibrary) {
+            localStorage.setItem('libraryManagement_selectedManageLibrary', selectedManageLibrary);
+        } else {
+            localStorage.removeItem('libraryManagement_selectedManageLibrary');
+        }
+    }, [selectedManageLibrary]);
 
     const showMessage = (text: string, type: MessageBarType) => {
         setMessage({ text, type });
@@ -101,46 +151,99 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         }
     };
 
-    // Upload Videos - Now Async
+    // Upload Videos - Now supports both file and URL upload
     const handleUploadVideos = async () => {
-        if (selectedFiles.length === 0 || !selectedUploadLibrary) return;
+        const hasItems = uploadMode === 'file' ? selectedFiles.length > 0 : videoUrls.trim().length > 0;
+        if (!hasItems || !selectedUploadLibrary) return;
 
         setIsProcessing(true);
         try {
             let successCount = 0;
             let failCount = 0;
 
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const file = selectedFiles[i];
-                const formData = new FormData();
-                formData.append('video', file);
-                formData.append('library', selectedUploadLibrary);
-
-                try {
-                    const response = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Upload failed for ${file.name}`);
-                    }
-
-                    const result = await response.json();
+            if (uploadMode === 'file') {
+                // Handle file uploads
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
                     
-                    // Add task to tracking
-                    addTask(result.task_id, file.name, selectedUploadLibrary);
-                    successCount++;
+                    // Check file size before upload
+                    if (file.size > 2 * 1024 * 1024 * 1024) {
+                        showMessage(`File ${file.name} is too large (${(file.size / 1024 / 1024 / 1024).toFixed(1)}GB). Use URL upload for files > 2GB.`, MessageBarType.error);
+                        failCount++;
+                        continue;
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('video', file);
+                    formData.append('library', selectedUploadLibrary);
 
-                } catch (error) {
-                    console.error(`Failed to upload ${file.name}:`, error);
-                    failCount++;
+                    try {
+                        const response = await fetch('/upload', {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`Upload failed for ${file.name}`);
+                        }
+
+                        const result = await response.json();
+                        
+                        // Add task to tracking
+                        addTask(result.task_id, file.name, selectedUploadLibrary);
+                        successCount++;
+
+                    } catch (error) {
+                        console.error(`Failed to upload ${file.name}:`, error);
+                        failCount++;
+                    }
                 }
+                
+                // Clear selected files after processing
+                setSelectedFiles([]);
+            } else {
+                // Handle URL uploads
+                const urls = videoUrls.split('\n').filter(url => url.trim());
+                
+                for (let i = 0; i < urls.length; i++) {
+                    const url = urls[i].trim();
+                    const videoName = url.split('/').pop() || `video_${i + 1}`;
+                    
+                    try {
+                        const response = await fetch('/upload', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                video_url: url,
+                                library: selectedUploadLibrary,
+                                video_name: videoName
+                            }),
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`URL upload failed for ${url}`);
+                        }
+
+                        const result = await response.json();
+                        
+                        // Add task to tracking
+                        addTask(result.task_id, videoName, selectedUploadLibrary);
+                        successCount++;
+
+                    } catch (error) {
+                        console.error(`Failed to upload URL ${url}:`, error);
+                        failCount++;
+                    }
+                }
+                
+                // Clear URLs after processing
+                setVideoUrls('');
             }
 
-            // Clear form
-            setSelectedFiles([]);
-            setSelectedUploadLibrary("");
+            // Clear library selection if desired
+            // setSelectedUploadLibrary("");
 
             // Show summary message
             if (failCount === 0) {
@@ -208,6 +311,51 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         }
     };
 
+    // Logs functions
+    const fetchLogs = async () => {
+        setLogsLoading(true);
+        try {
+            const response = await fetch(`/api/system/logs?type=${logFilter.type}&lines=${logFilter.lines}`);
+            if (response.ok) {
+                const data = await response.json();
+                setLogs(data.logs || []);
+                showMessage(`Loaded ${data.showing} log lines (${data.total_lines} total)`, MessageBarType.success);
+            } else {
+                throw new Error('Failed to fetch logs');
+            }
+        } catch (error) {
+            showMessage(`Failed to load logs: ${error}`, MessageBarType.error);
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const fetchTasksHistory = async () => {
+        setLogsLoading(true);
+        try {
+            const params = new URLSearchParams({
+                days: logFilter.days.toString(),
+                limit: '50'
+            });
+            if (logFilter.statusFilter) {
+                params.append('status', logFilter.statusFilter);
+            }
+
+            const response = await fetch(`/api/system/tasks-history?${params}`);
+            if (response.ok) {
+                const data = await response.json();
+                setTasksHistory(data.tasks || []);
+                showMessage(`Loaded ${data.showing} task records (${data.total_found} total)`, MessageBarType.success);
+            } else {
+                throw new Error('Failed to fetch tasks history');
+            }
+        } catch (error) {
+            showMessage(`Failed to load task history: ${error}`, MessageBarType.error);
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
     return (
         <div className={styles.libraryManagementPanel}>
             {message && (
@@ -239,6 +387,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                 <PivotItem headerText="Upload Videos" itemKey="upload" itemIcon="Upload" />
                 <PivotItem headerText="Manage Videos" itemKey="manage" itemIcon="Video" />
                 <PivotItem headerText="Processing Status" itemKey="tasks" itemIcon="ProcessingRun" />
+                <PivotItem headerText="System Logs" itemKey="logs" itemIcon="FileCode" />
                 <PivotItem headerText="Library Settings" itemKey="settings" itemIcon="Settings" />
             </Pivot>
 
@@ -274,50 +423,78 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 <h4>Upload Video</h4>
                             </Stack>
                             <Stack tokens={{ childrenGap: 12 }}>
-                                <div className={styles.fileUploadArea}>
-                                    <input
-                                        type="file"
-                                        accept="video/*,.mp4,.mov,.avi,.mkv"
-                                        onChange={handleFileChange}
+                                {/* Upload Mode Selection */}
+                                <Dropdown
+                                    label="Upload Method"
+                                    options={[
+                                        { key: 'file', text: 'Upload Files (<2GB each)' },
+                                        { key: 'url', text: 'Upload from URLs (<30GB each)' }
+                                    ]}
+                                    selectedKey={uploadMode}
+                                    onChange={(_, item) => setUploadMode(item?.key as 'file' | 'url')}
+                                    disabled={isProcessing}
+                                />
+                                {uploadMode === 'file' ? (
+                                    <div className={styles.fileUploadArea}>
+                                        <input
+                                            type="file"
+                                            accept="video/*,.mp4,.mov,.avi,.mkv"
+                                            onChange={handleFileChange}
+                                            disabled={isProcessing}
+                                            id="video-upload"
+                                            className={styles.fileInput}
+                                            multiple
+                                        />
+                                        <label htmlFor="video-upload" className={styles.fileLabel}>
+                                            {selectedFiles.length > 0 ? (
+                                                <div>
+                                                    <strong>Files selected: {selectedFiles.length}</strong>
+                                                    <br />
+                                                    <small>
+                                                        {selectedFiles.map(f => f.name).join(', ')}
+                                                    </small>
+                                                    <br />
+                                                    <small>
+                                                        Total: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2)} MB
+                                                        {selectedFiles.some(f => f.size > 2 * 1024 * 1024 * 1024) && (
+                                                            <span style={{ color: 'red' }}> (Some files &gt; 2GB - use URL upload)</span>
+                                                        )}
+                                                    </small>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <strong>Click to select video files</strong>
+                                                    <br />
+                                                    <small>Supports: MP4, MOV, AVI, MKV (Max 2GB each, Multiple files allowed)</small>
+                                                </div>
+                                            )}
+                                        </label>
+                                    </div>
+                                ) : (
+                                    <TextField
+                                        label="Video URLs"
+                                        placeholder="Enter video URLs, one per line"
+                                        multiline
+                                        rows={4}
+                                        value={videoUrls}
+                                        onChange={(_, value) => setVideoUrls(value || '')}
                                         disabled={isProcessing}
-                                        id="video-upload"
-                                        className={styles.fileInput}
-                                        multiple
+                                        description="Enter direct video file URLs (up to 30GB each). One URL per line."
                                     />
-                                    <label htmlFor="video-upload" className={styles.fileLabel}>
-                                        {selectedFiles.length > 0 ? (
-                                            <div>
-                                                <strong>Files selected: {selectedFiles.length}</strong>
-                                                <br />
-                                                <small>
-                                                    {selectedFiles.map(f => f.name).join(', ')}
-                                                </small>
-                                                <br />
-                                                <small>
-                                                    Total: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2)} MB
-                                                </small>
-                                            </div>
-                                        ) : (
-                                            <div>
-                                                <strong>Click to select video files</strong>
-                                                <br />
-                                                <small>Supports: MP4, MOV, AVI, MKV (Multiple files allowed)</small>
-                                            </div>
-                                        )}
-                                    </label>
-                                </div>
+                                )}
 
                                 <Dropdown
                                     placeholder="Select destination library"
                                     options={indexes}
+                                    selectedKey={selectedUploadLibrary}
                                     onChange={(_, item) => setSelectedUploadLibrary(item?.key as string || "")}
                                     disabled={isProcessing}
                                 />
 
                                 <PrimaryButton
-                                    text={isProcessing ? "Queuing..." : `Queue ${selectedFiles.length} Video(s)`}
+                                    text={isProcessing ? "Queuing..." : uploadMode === 'file' ? `Queue ${selectedFiles.length} Video(s)` : `Queue ${videoUrls.split('\n').filter(url => url.trim()).length} URL(s)`}
                                     onClick={handleUploadVideos}
-                                    disabled={selectedFiles.length === 0 || !selectedUploadLibrary || isProcessing}
+                                    disabled={(uploadMode === 'file' ? selectedFiles.length === 0 : !videoUrls.trim()) || !selectedUploadLibrary || isProcessing}
                                     iconProps={{ iconName: isProcessing ? "Clock" : "Upload" }}
                                 />
                             </Stack>
@@ -337,6 +514,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 <Dropdown
                                     placeholder="Select library to manage"
                                     options={indexes}
+                                    selectedKey={selectedManageLibrary}
                                     onChange={(_, item) => setSelectedManageLibrary(item?.key as string || "")}
                                 />
                             </Stack>
@@ -358,7 +536,19 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                 <div className={styles.tabContent}>
                     <div className={styles.taskStatusSection}>
                         <Stack horizontal horizontalAlign="space-between" verticalAlign="center" tokens={{ childrenGap: 8 }}>
-                            <h4>Processing Status ({tasks.length})</h4>
+                            <div>
+                                <h4>Processing Status ({tasks.length})</h4>
+                                <small style={{ color: '#605e5c' }}>
+                                    {(() => {
+                                        const pending = tasks.filter(t => t.status === 'pending').length;
+                                        const processing = tasks.filter(t => t.status === 'processing').length;
+                                        const completed = tasks.filter(t => t.status === 'completed').length;
+                                        const failed = tasks.filter(t => t.status === 'failed').length;
+                                        const cancelled = tasks.filter(t => t.status === 'cancelled').length;
+                                        return `Active: ${pending + processing}, Completed: ${completed}, Failed: ${failed}, Cancelled: ${cancelled}`;
+                                    })()}
+                                </small>
+                            </div>
                             <div>
                                 <DefaultButton 
                                     text="Clear All" 
@@ -395,6 +585,153 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                 </div>
             )}
 
+            {activeTab === "logs" && (
+                <div className={styles.tabContent}>
+                    <Stack tokens={{ childrenGap: 16 }}>
+                        <div className={styles.actionCard}>
+                            <h4>System Logs and Task History</h4>
+                            <Stack tokens={{ childrenGap: 12 }}>
+                                <Stack horizontal tokens={{ childrenGap: 12 }}>
+                                    <Dropdown
+                                        label="Log Type"
+                                        options={[
+                                            { key: 'app', text: 'Application Logs' },
+                                            { key: 'tasks', text: 'Task History' }
+                                        ]}
+                                        selectedKey={logFilter.type}
+                                        onChange={(_, item) => setLogFilter({...logFilter, type: item?.key as string})}
+                                        styles={{ root: { minWidth: 120 } }}
+                                    />
+                                    
+                                    {logFilter.type === 'app' ? (
+                                        <TextField
+                                            label="Number of Lines"
+                                            type="number"
+                                            value={logFilter.lines.toString()}
+                                            onChange={(_, value) => setLogFilter({...logFilter, lines: parseInt(value || '100')})}
+                                            styles={{ root: { width: 100 } }}
+                                        />
+                                    ) : (
+                                        <>
+                                            <TextField
+                                                label="Days to Show"
+                                                type="number"
+                                                value={logFilter.days.toString()}
+                                                onChange={(_, value) => setLogFilter({...logFilter, days: parseInt(value || '7')})}
+                                                styles={{ root: { width: 100 } }}
+                                            />
+                                            <Dropdown
+                                                label="Status Filter"
+                                                options={[
+                                                    { key: '', text: 'All' },
+                                                    { key: 'completed', text: 'Completed' },
+                                                    { key: 'failed', text: 'Failed' },
+                                                    { key: 'cancelled', text: 'Cancelled' },
+                                                    { key: 'pending', text: 'Pending' },
+                                                    { key: 'processing', text: 'Processing' }
+                                                ]}
+                                                selectedKey={logFilter.statusFilter}
+                                                onChange={(_, item) => setLogFilter({...logFilter, statusFilter: item?.key as string})}
+                                                styles={{ root: { minWidth: 120 } }}
+                                            />
+                                        </>
+                                    )}
+                                    
+                                    <PrimaryButton
+                                        text={logsLoading ? "Loading..." : logFilter.type === 'app' ? "Load Logs" : "Load Task History"}
+                                        onClick={logFilter.type === 'app' ? fetchLogs : fetchTasksHistory}
+                                        disabled={logsLoading}
+                                        iconProps={{ iconName: logsLoading ? "Clock" : "Refresh" }}
+                                    />
+                                </Stack>
+                            </Stack>
+                        </div>
+
+                        {logFilter.type === 'app' && logs.length > 0 && (
+                            <div className={styles.actionCard}>
+                                <h5>Application Logs</h5>
+                                <div style={{ 
+                                    maxHeight: '400px', 
+                                    overflow: 'auto', 
+                                    backgroundColor: '#f8f9fa', 
+                                    padding: '12px', 
+                                    borderRadius: '4px',
+                                    fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                                    fontSize: '12px'
+                                }}>
+                                    {logs.map((line, index) => (
+                                        <div key={index} style={{ 
+                                            marginBottom: '2px',
+                                            color: line.includes('ERROR') ? '#d32f2f' : 
+                                                   line.includes('WARNING') ? '#f57c00' : 
+                                                   line.includes('INFO') ? '#1976d2' : '#666'
+                                        }}>
+                                            {line}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {logFilter.type === 'tasks' && tasksHistory.length > 0 && (
+                            <div className={styles.actionCard}>
+                                <h5>Task History</h5>
+                                <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                        <thead>
+                                            <tr style={{ backgroundColor: '#f1f3f4' }}>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Task ID</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Filename</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Status</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Progress</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Created</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #e1e5e9' }}>Completed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {tasksHistory.map((task, index) => (
+                                                <tr key={index} style={{ 
+                                                    backgroundColor: index % 2 === 0 ? '#fff' : '#f8f9fa',
+                                                    color: task.status === 'completed' ? '#2e7d32' :
+                                                           task.status === 'failed' ? '#d32f2f' :
+                                                           task.status === 'cancelled' ? '#f57c00' : '#1976d2'
+                                                }}>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        <small>{task.task_id?.substring(0, 8)}...</small>
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        {task.filename}
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        <strong>{task.status}</strong>
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        {task.progress}%
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        <small>{new Date(task.created_at).toLocaleString()}</small>
+                                                    </td>
+                                                    <td style={{ padding: '8px', border: '1px solid #e1e5e9' }}>
+                                                        <small>{task.completed_at ? new Date(task.completed_at).toLocaleString() : '-'}</small>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {((logFilter.type === 'app' && logs.length === 0) || 
+                          (logFilter.type === 'tasks' && tasksHistory.length === 0)) && !logsLoading && (
+                            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#605e5c' }}>
+                                {logFilter.type === 'app' ? 'No log records. Click "Load Logs" to view system logs.' : 'No task history records.'}
+                            </div>
+                        )}
+                    </Stack>
+                </div>
+            )}
+
             {activeTab === "settings" && (
                 <div className={styles.tabContent}>
                     <Stack tokens={{ childrenGap: 20 }}>
@@ -407,6 +744,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 <Dropdown
                                     placeholder="Choose library to delete"
                                     options={indexes}
+                                    selectedKey={selectedLibraryToDelete}
                                     onChange={(_, item) => setSelectedLibraryToDelete(item?.key as string || "")}
                                     disabled={isProcessing}
                                 />

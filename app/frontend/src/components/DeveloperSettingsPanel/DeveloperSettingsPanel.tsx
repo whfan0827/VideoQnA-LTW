@@ -11,31 +11,6 @@ interface ConversationStarter {
     value: string;
 }
 
-const DEFAULT_PROMPT_TEMPLATE = `You are an intelligent assistant helping customers with their video questions.
-Use 'you' to refer to the individual asking the questions even if they ask with 'I'.
-Answer the following question using the data provided in the sources below.
-For tabular information return it as an html table. Do not return markdown format.
-Each source has a name followed by colon and the actual information, always include the source name for each fact you use in the response.
-The source name should be surrounded by square brackets. e.g. [video_id].
-Provide helpful information even if the sources don't contain complete step-by-step instructions.
-If the sources contain related information, explain what information is available and how it might be helpful.
-Only say "I didn't find the answer, can you please rephrase?" if the sources contain no relevant information at all.
-A Source always starts with a UUID followed by a colon and the source content.
-Sources include some of the following:
-Video title: title of the video.
-Visual: textual content which is visible in the video.
-Transcript: textual content which is spoken in the video. May start with a speaker name.
-Known people: names of people who appear in video.
-Tags: tags which describe the time period in the video.
-Audio effects: sound effects which are heard in the video.
-
-###
-Question: '{question}'
-
-Sources:
-{context}
-
-Answer:`;
 
 const DEFAULT_CONVERSATION_STARTERS: ConversationStarter[] = [
     {
@@ -53,23 +28,57 @@ const DEFAULT_CONVERSATION_STARTERS: ConversationStarter[] = [
 ];
 
 export const DeveloperSettingsPanel = ({ indexes }: DeveloperSettingsPanelProps) => {
-    const [selectedIndex, setSelectedIndex] = useState("");
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        return localStorage.getItem('target_library') || "";
+    });
     const [message, setMessage] = useState<{ text: string; type: MessageBarType } | null>(null);
     
-    // Conversation Starters state
-    const [starter1, setStarter1] = useState("");
-    const [starter2, setStarter2] = useState("");
-    const [starter3, setStarter3] = useState("");
+    // Conversation Starters state with localStorage initialization
+    const [starter1, setStarter1] = useState(() => {
+        try {
+            const saved = localStorage.getItem('conversation_starters');
+            if (saved) {
+                const starters = JSON.parse(saved) as ConversationStarter[];
+                return starters[0]?.text || DEFAULT_CONVERSATION_STARTERS[0].text;
+            }
+            return DEFAULT_CONVERSATION_STARTERS[0].text;
+        } catch (error) {
+            return DEFAULT_CONVERSATION_STARTERS[0].text;
+        }
+    });
+    const [starter2, setStarter2] = useState(() => {
+        try {
+            const saved = localStorage.getItem('conversation_starters');
+            if (saved) {
+                const starters = JSON.parse(saved) as ConversationStarter[];
+                return starters[1]?.text || DEFAULT_CONVERSATION_STARTERS[1].text;
+            }
+            return DEFAULT_CONVERSATION_STARTERS[1].text;
+        } catch (error) {
+            return DEFAULT_CONVERSATION_STARTERS[1].text;
+        }
+    });
+    const [starter3, setStarter3] = useState(() => {
+        try {
+            const saved = localStorage.getItem('conversation_starters');
+            if (saved) {
+                const starters = JSON.parse(saved) as ConversationStarter[];
+                return starters[2]?.text || DEFAULT_CONVERSATION_STARTERS[2].text;
+            }
+            return DEFAULT_CONVERSATION_STARTERS[2].text;
+        } catch (error) {
+            return DEFAULT_CONVERSATION_STARTERS[2].text;
+        }
+    });
 
     const showMessage = (text: string, type: MessageBarType) => {
         setMessage({ text, type });
         setTimeout(() => setMessage(null), 5000);
     };
 
-    // Load conversation starters from localStorage
+    // Load initial data and validate on mount
     useEffect(() => {
-        loadConversationStarters();
-        loadTargetLibrary();
+        // Only validation needed as state is initialized from localStorage
     }, []);
 
     // Validate selected index when indexes change
@@ -83,17 +92,15 @@ export const DeveloperSettingsPanel = ({ indexes }: DeveloperSettingsPanelProps)
         }
     }, [indexes, selectedIndex]);
 
-    // Load target library from localStorage
-    const loadTargetLibrary = () => {
-        try {
-            const saved = localStorage.getItem('target_library');
-            if (saved) {
-                setSelectedIndex(saved);
-            }
-        } catch (error) {
-            console.error('Error loading target library:', error);
+    // Persist selectedIndex changes
+    useEffect(() => {
+        if (selectedIndex) {
+            localStorage.setItem('target_library', selectedIndex);
+        } else {
+            localStorage.removeItem('target_library');
         }
-    };
+    }, [selectedIndex]);
+
 
     // Save target library to localStorage
     const saveTargetLibrary = (libraryKey: string) => {
@@ -108,28 +115,6 @@ export const DeveloperSettingsPanel = ({ indexes }: DeveloperSettingsPanelProps)
         }
     };
 
-    const loadConversationStarters = () => {
-        try {
-            const saved = localStorage.getItem('conversation_starters');
-            if (saved) {
-                const starters = JSON.parse(saved) as ConversationStarter[];
-                setStarter1(starters[0]?.text || "");
-                setStarter2(starters[1]?.text || "");
-                setStarter3(starters[2]?.text || "");
-            } else {
-                // Load defaults
-                setStarter1(DEFAULT_CONVERSATION_STARTERS[0].text);
-                setStarter2(DEFAULT_CONVERSATION_STARTERS[1].text);
-                setStarter3(DEFAULT_CONVERSATION_STARTERS[2].text);
-            }
-        } catch (error) {
-            console.error('Error loading conversation starters:', error);
-            // Load defaults on error
-            setStarter1(DEFAULT_CONVERSATION_STARTERS[0].text);
-            setStarter2(DEFAULT_CONVERSATION_STARTERS[1].text);
-            setStarter3(DEFAULT_CONVERSATION_STARTERS[2].text);
-        }
-    };
 
     const handleSaveConversationStarters = () => {
         try {

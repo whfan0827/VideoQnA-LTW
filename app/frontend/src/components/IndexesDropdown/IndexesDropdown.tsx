@@ -9,7 +9,7 @@ const dropdownStyles: Partial<IDropdownStyles> = {
     dropdown: {}
 };
 export const IndexesDropdown = ({ indexes, selectedIndex, onIndexChanged }: Props) => {
-    const onChange = (event: React.FormEvent<HTMLDivElement>, item: IDropdownOption | undefined): void => {
+    const onChange = (_event: React.FormEvent<HTMLDivElement>, item: IDropdownOption | undefined): void => {
         if (item) {
             console.log("Dropdown onChange - selected item: ", item);
             onIndexChanged(item.key as string);

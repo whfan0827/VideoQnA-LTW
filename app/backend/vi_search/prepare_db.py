@@ -7,20 +7,24 @@ from typing import Optional
 
 from dotenv import dotenv_values
 
-from vi_search.constants import BASE_DIR, DATA_DIR
+from vi_search.constants import DATA_DIR
 from vi_search.language_models.language_models import LanguageModels
 from vi_search.prep_scenes import get_sections_generator
 from vi_search.prompt_content_db.prompt_content_db import PromptContentDB, VECTOR_FIELD_NAME
 from vi_search.vi_client.video_indexer_client import init_video_indexer_client, VideoIndexerClient
+from vi_search.file_hash_cache import get_global_cache
 
 
 def index_videos(client: VideoIndexerClient,
                  videos: list[str] | list[Path],
                  extensions: list = ['.mp4', '.mov', '.avi'],
                  privacy: str = 'private',
-                 excluded_ai=None) -> dict[str, str]:
+                 excluded_ai=None,
+                 library_name: str = "") -> dict[str, str]:
     start = time.time()
     videos_ids = {}
+    file_cache = get_global_cache()
+    
     for video_file in videos:
         video_file = Path(video_file)
 
@@ -34,10 +38,35 @@ def index_videos(client: VideoIndexerClient,
 
         print(f"Processing video: {video_file}")
 
-        video_id = client.file_upload_async(video_file, excluded_ai=excluded_ai, privacy=privacy)
-        videos_ids[str(video_file)] = video_id
+        # Check if this file (by content hash) has already been processed
+        cached_info = file_cache.get_cached_video_info(video_file)
+        if cached_info:
+            video_id = cached_info['video_id']
+            print(f"Using cached video_id {video_id} for duplicate file: {video_file.name}")
+            print(f"Original file: {cached_info.get('filename', 'unknown')} (cached at {cached_info.get('cached_at_readable', 'unknown')})")
+            videos_ids[str(video_file)] = video_id
+            continue
 
-    print(f"Videos uploaded: {videos_ids}, took {time.time() - start} seconds")
+        # File is not cached, proceed with upload
+        try:
+            video_id = client.file_upload_async(video_file, excluded_ai=excluded_ai, privacy=privacy)
+            videos_ids[str(video_file)] = video_id
+            
+            # Cache the video_id for future duplicate detection
+            file_cache.cache_video_info(
+                file_path=video_file,
+                video_id=video_id,
+                library_name=library_name,
+                additional_info={'privacy': privacy, 'upload_method': 'file'}
+            )
+            print(f"Cached video_id {video_id} for file: {video_file.name}")
+            
+        except Exception as e:
+            print(f"Failed to upload {video_file}: {str(e)}")
+            # Don't cache failed uploads
+            continue
+
+    print(f"Videos processed: {len(videos_ids)} files, took {time.time() - start} seconds")
     return videos_ids
 
 
@@ -61,13 +90,15 @@ def wait_for_videos_processing(client: VideoIndexerClient, videos_ids: dict, get
         if elapsed > timeout:
             raise TimeoutError(f"Timeout reached. Videos left to process: {videos_left}")
 
-        if elapsed % 20 == 0:
-            print(f"Elapsed time: {time.time() - start} seconds. Waiting for videos to process: {videos_left}")
+        # Progressive reporting: more frequent initially, then less frequent
+        if elapsed % 60 == 0 and elapsed > 0:  # Report every minute
+            remaining_count = len(videos_left)
+            print(f"Elapsed time: {elapsed/60:.1f} minutes. Videos still processing: {remaining_count}")
 
         if not videos_left:
             break
 
-        time.sleep(1)
+        time.sleep(10)  # Check every 10 seconds instead of 1
 
     print(f"Videos processing completed, took {time.time() - start} seconds")
 
@@ -76,10 +107,10 @@ def wait_for_videos_processing(client: VideoIndexerClient, videos_ids: dict, get
 
 
 class CustomEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Path):
-            return str(obj)
-        return super().default(obj)  # Use default serialization for other types
+    def default(self, o):
+        if isinstance(o, Path):
+            return str(o)
+        return super().default(o)  # Use default serialization for other types
 
 
 def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_content_db: PromptContentDB,
@@ -145,21 +176,21 @@ def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels,
     else:
         # Setting privacy to 'public' allows much simpler access to the videos by the UI (No need for VI keys),
         # this should be used with *caution*.
-        videos_ids = index_videos(client, videos=videos, privacy='public')
+        videos_ids = index_videos(client, videos=videos, privacy='public', library_name=db_name)
         if use_videos_ids_cache:
             print(f"Saving videos IDs to {video_ids_cache_file}")
             video_ids_cache_file.write_text(json.dumps(videos_ids, cls=CustomEncoder))
 
     if progress_callback:
-        progress_callback("Waiting for Video Indexer processing...", 30)
+        progress_callback("Waiting for Video Indexer processing... (this may take 15-60 minutes)", 30)
 
-    wait_for_videos_processing(client, videos_ids, timeout=600)
+    wait_for_videos_processing(client, videos_ids, timeout=3600)
 
     if progress_callback:
-        progress_callback("Retrieving video insights and content...", 50)
+        progress_callback("Generating AI-powered content analysis... (this may take 30-120 minutes for longer videos)", 50)
 
     ### Getting indexed videos prompt content ###
-    videos_prompt_content = client.get_collection_prompt_content(list(videos_ids.values()))
+    videos_prompt_content = client.get_collection_prompt_content(list(videos_ids.values()), timeout_sec=7200)
 
     if verbose:
         for video_id, prompt_content in videos_prompt_content.items():

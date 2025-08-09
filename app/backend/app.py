@@ -1,13 +1,38 @@
 import logging
 import os
-import json
 import re
 import uuid
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from datetime import datetime
 
 from flask import Flask, request, jsonify
+
+# Setup logging system
+log_dir = Path(__file__).parent / "logs"
+log_dir.mkdir(exist_ok=True)
+
+# Configure log format and handlers
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(
+            log_dir / f"app_{datetime.now().strftime('%Y%m%d')}.log",
+            encoding='utf-8'
+        ),
+        logging.StreamHandler()  # Also output to console
+    ]
+)
+
+# Set log levels for specific modules
+logging.getLogger('task_manager').setLevel(logging.INFO)
+logging.getLogger('database.app_data_manager').setLevel(logging.INFO)
+logging.getLogger('vi_search').setLevel(logging.INFO)
+
+logger = logging.getLogger(__name__)
+logger.info("Application starting with enhanced logging system")
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent / ".env"
@@ -16,8 +41,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from vi_search.ask import RetrieveThenReadVectorApproach
-from vi_search.prepare_db import prepare_db
-from vi_search.constants import BASE_DIR, DATA_DIR
+from vi_search.constants import DATA_DIR
 from services.settings_service import SettingsService
 from services.ai_template_service import AITemplateService, init_ai_templates_database
 from task_manager import task_manager
@@ -150,7 +174,7 @@ def create_library():
         
         # Create empty database
         embeddings_size = language_models.get_embeddings_size()
-        prompt_content_db.create_db(library_name, vector_search_dimensions=embeddings_size)
+        prompt_content_db.create_db(library_name, embeddings_size)
         
         return jsonify({"message": f"Library '{library_name}' created successfully"}), 201
         
@@ -180,16 +204,52 @@ def delete_library(library_name):
 
 @app.route("/upload", methods=["POST"])
 def upload_video():
-    """Upload video to a specific library - Async processing"""
+    """Upload video to a specific library - Supports both file and URL upload"""
     try:
-        if 'video' not in request.files:
-            return jsonify({"error": "No video file provided"}), 400
+        # Check if this is a JSON request (URL upload) or form data (file upload)
+        if request.is_json:
+            # Handle URL upload
+            data = request.get_json()
             
-        if 'library' not in request.form:
-            return jsonify({"error": "Library name is required"}), 400
+            if 'video_url' not in data:
+                return jsonify({"error": "No video URL provided"}), 400
+            if 'library' not in data:
+                return jsonify({"error": "Library name is required"}), 400
+                
+            video_url = data['video_url']
+            library_name = data['library']
+            video_name = data.get('video_name', video_url.split('/')[-1])
             
-        video_file = request.files['video']
-        library_name = request.form['library']
+            # Validate URL format
+            from urllib.parse import urlparse
+            parsed_url = urlparse(video_url)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                return jsonify({"error": "Invalid video URL format"}), 400
+            
+            # Check if library exists
+            available_dbs = prompt_content_db.get_available_dbs()
+            if library_name not in available_dbs:
+                return jsonify({"error": "Library not found"}), 404
+            
+            # Create URL upload task
+            task_id = task_manager.create_url_upload_task(video_name, library_name, video_url)
+            
+            return jsonify({
+                "task_id": task_id,
+                "message": f"URL upload started for {video_name}",
+                "status": "accepted"
+            }), 202  # HTTP 202 Accepted
+        
+        else:
+            # Handle file upload (existing logic)
+            if 'video' not in request.files:
+                return jsonify({"error": "No video file provided"}), 400
+                
+            if 'library' not in request.form:
+                return jsonify({"error": "Library name is required"}), 400
+                
+            video_file = request.files['video']
+            library_name = request.form['library']
         
         if video_file.filename == '' or video_file.filename is None:
             return jsonify({"error": "No video file selected"}), 400
@@ -577,6 +637,95 @@ def get_templates_by_category():
     
     except Exception as e:
         logging.exception("Exception in get templates by category")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/system/logs", methods=["GET"])
+def get_system_logs():
+    """Get system logs for debugging"""
+    try:
+        log_type = request.args.get('type', 'app')
+        lines = int(request.args.get('lines', 100))
+        
+        log_dir = Path(__file__).parent / "logs"
+        today = datetime.now().strftime('%Y%m%d')
+        
+        if log_type == 'app':
+            log_file = log_dir / f"app_{today}.log"
+        else:
+            return jsonify({"error": "Invalid log type"}), 400
+        
+        if not log_file.exists():
+            return jsonify({"logs": [], "message": f"Log file not found: {log_file.name}"})
+        
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                all_lines = f.readlines()
+                # Get last N lines
+                recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                
+            return jsonify({
+                "logs": [line.strip() for line in recent_lines],
+                "total_lines": len(all_lines),
+                "file": log_file.name,
+                "showing": len(recent_lines)
+            })
+            
+        except Exception as e:
+            return jsonify({"error": f"Failed to read log file: {str(e)}"}), 500
+        
+    except Exception as e:
+        logging.exception("Exception in get system logs")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/system/tasks-history", methods=["GET"])
+def get_tasks_history():
+    """Get all tasks history from database"""
+    try:
+        # Get query parameters
+        status_filter = request.args.get('status')  # Optional status filter
+        days = int(request.args.get('days', 7))  # Default to recent 7 days
+        limit = int(request.args.get('limit', 100))  # Limit number of results
+        
+        # Get task history from database
+        all_tasks = db_manager.get_all_tasks()
+        
+        # Filter tasks from recent N days
+        from datetime import datetime, timedelta
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        filtered_tasks = []
+        for task in all_tasks:
+            try:
+                task_date = datetime.fromisoformat(task['created_at']) if task['created_at'] else datetime.min
+                if task_date >= cutoff_date:
+                    # Apply status filter
+                    if not status_filter or task['status'] == status_filter:
+                        filtered_tasks.append(task)
+            except (ValueError, KeyError):
+                continue
+        
+        # Sort by creation time (newest first)
+        filtered_tasks.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        # Apply limit
+        result_tasks = filtered_tasks[:limit]
+        
+        return jsonify({
+            "tasks": result_tasks,
+            "total_found": len(filtered_tasks),
+            "total_in_db": len(all_tasks),
+            "showing": len(result_tasks),
+            "filter": {
+                "status": status_filter,
+                "days": days,
+                "limit": limit
+            }
+        })
+        
+    except Exception as e:
+        logging.exception("Exception in get tasks history")
         return jsonify({"error": str(e)}), 500
 
 

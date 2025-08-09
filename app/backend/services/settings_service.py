@@ -1,4 +1,3 @@
-import sqlite3
 from typing import Optional, Dict, Any
 from datetime import datetime
 from database.init_db import get_connection

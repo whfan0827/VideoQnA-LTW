@@ -68,6 +68,28 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
     copyFromTemplate: '',
   });
 
+  // Persist selected template ID
+  useEffect(() => {
+    if (selectedTemplate) {
+      localStorage.setItem('templateManagement_selectedTemplateName', selectedTemplate.templateName);
+    } else {
+      localStorage.removeItem('templateManagement_selectedTemplateName');
+    }
+  }, [selectedTemplate]);
+
+  // Restore selected template when templates are loaded
+  useEffect(() => {
+    if (templates.length > 0) {
+      const savedTemplateName = localStorage.getItem('templateManagement_selectedTemplateName');
+      if (savedTemplateName) {
+        const template = templates.find(t => t.templateName === savedTemplateName);
+        if (template) {
+          setSelectedTemplate(template);
+        }
+      }
+    }
+  }, [templates]);
+
   useEffect(() => {
     loadTemplates();
   }, []);

@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from enum import Enum
 from dataclasses import dataclass, asdict
-from typing import Dict, Optional, Callable, List
+from typing import Dict, Optional, List
 from pathlib import Path
 
 from database.app_data_manager import db_manager
@@ -33,6 +33,8 @@ class TaskInfo:
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     file_path: Optional[str] = None
+    retry_count: int = 0
+    max_retries: int = 2
     
     def to_dict(self):
         data = asdict(self)
@@ -46,7 +48,7 @@ class TaskManager:
     def __init__(self):
         self.tasks: Dict[str, TaskInfo] = {}
         self.processing_queue = []
-        self.max_concurrent = 3  # Maximum concurrent processing tasks
+        self.max_concurrent = 1  # Maximum concurrent processing tasks
         self.current_processing = 0
         self.lock = threading.Lock()
         self.shutdown = False
@@ -117,7 +119,7 @@ class TaskManager:
             logger.error(f"Failed to save task {task.task_id} to database: {e}")
     
     def create_upload_task(self, filename: str, library_name: str, file_path: str) -> str:
-        """Create a new upload task"""
+        """Create a new file upload task"""
         task_id = str(uuid.uuid4())
         
         task = TaskInfo(
@@ -139,11 +141,33 @@ class TaskManager:
         # Save to database
         self._save_task_to_db(task)
         
-        logger.info(f"Created upload task {task_id} for file {filename}")
-        logger.info(f"Current queue length: {len(self.processing_queue)}")
-        logger.info(f"Current processing count: {self.current_processing}")
-        logger.info(f"Worker thread alive: {self.worker_thread.is_alive()}")
+        logger.info(f"Created file upload task {task_id} for file '{filename}' in library '{library_name}' (queue position: {len(self.processing_queue)})")
+        return task_id
+    
+    def create_url_upload_task(self, filename: str, library_name: str, video_url: str) -> str:
+        """Create a new URL upload task"""
+        task_id = str(uuid.uuid4())
         
+        task = TaskInfo(
+            task_id=task_id,
+            task_type="video_url_upload",
+            status=TaskStatus.PENDING,
+            progress=0,
+            current_step="Queued for URL processing",
+            filename=filename,
+            library_name=library_name,
+            file_path=video_url,  # Store URL in file_path field
+            created_at=datetime.now()
+        )
+        
+        with self.lock:
+            self.tasks[task_id] = task
+            self.processing_queue.append(task_id)
+        
+        # Save to database
+        self._save_task_to_db(task)
+        
+        logger.info(f"Created URL upload task {task_id} for URL {video_url}")
         return task_id
     
     def create_video_delete_task(self, library_name: str, video_id: str) -> str:
@@ -262,10 +286,22 @@ class TaskManager:
                     self.processing_queue.remove(task_id)
                 
                 # Remove from database
-                db_manager.delete_task(task_id)
+                try:
+                    db_manager.delete_task(task_id)
+                except Exception as e:
+                    logger.warning(f"Failed to delete task {task_id} from database: {e}")
                 
                 logger.info(f"Task {task_id} removed")
                 return True
+        
+        # Task not found in memory, try to delete from database anyway
+        try:
+            success = db_manager.delete_task(task_id)
+            if success:
+                logger.info(f"Task {task_id} found in database and removed")
+                return True
+        except Exception as e:
+            logger.warning(f"Error trying to delete task {task_id} from database: {e}")
         
         logger.warning(f"Task {task_id} not found for removal")
         return False
@@ -318,6 +354,8 @@ class TaskManager:
             
             if task.task_type == "video_upload":
                 self._process_video_upload(task_id)
+            elif task.task_type == "video_url_upload":
+                self._process_video_url_upload(task_id)
             elif task.task_type == "video_delete":
                 self._process_video_delete(task_id)
             elif task.task_type == "batch_video_delete":
@@ -328,10 +366,45 @@ class TaskManager:
         except Exception as e:
             logger.exception(f"Task {task_id} failed: {e}")
             task = self.tasks[task_id]
-            task.status = TaskStatus.FAILED
-            task.error_message = str(e)
-            task.current_step = f"Failed: {str(e)}"
-            task.completed_at = datetime.now()
+            
+            # Check if this is a retryable error (connection issues)
+            is_retryable = (
+                "10054" in str(e) or 
+                "Connection aborted" in str(e) or
+                "Connection reset" in str(e) or
+                "timeout" in str(e).lower()
+            )
+            
+            if is_retryable and task.retry_count < task.max_retries:
+                task.retry_count += 1
+                retry_delay = task.retry_count * 60  # 1, 2, 3 minutes
+                task.status = TaskStatus.PENDING  # Reset to pending for retry
+                task.current_step = f"Retrying in {retry_delay}s (attempt {task.retry_count + 1}/{task.max_retries + 1}): {str(e)}"
+                task.error_message = f"Retry {task.retry_count}: {str(e)}"
+                
+                logger.info(f"Task {task_id} will retry in {retry_delay}s (attempt {task.retry_count + 1}/{task.max_retries + 1})")
+                
+                # Schedule retry by adding back to queue with delay
+                import threading
+                def delayed_retry():
+                    time.sleep(retry_delay)
+                    with self.lock:
+                        if task.status == TaskStatus.PENDING:  # Only if not cancelled
+                            self.processing_queue.append(task_id)
+                            logger.info(f"Task {task_id} added back to queue for retry")
+                
+                retry_thread = threading.Thread(target=delayed_retry, daemon=True)
+                retry_thread.start()
+            else:
+                # Final failure after all retries
+                task.status = TaskStatus.FAILED
+                if task.retry_count > 0:
+                    task.error_message = f"Failed after {task.retry_count} retries: {str(e)}"
+                    task.current_step = f"Failed after {task.retry_count} retries: {str(e)}"
+                else:
+                    task.error_message = str(e)
+                    task.current_step = f"Failed: {str(e)}"
+                task.completed_at = datetime.now()
             
             # Save to database
             self._save_task_to_db(task)
@@ -346,10 +419,19 @@ class TaskManager:
         # Step 1: Initialize
         self.update_task_progress(task_id, 5, "Initializing video processing...")
         
+        # Brief delay to avoid API rate limiting - reduced due to optimized connection handling
+        import time
+        # Short delay since we now have token caching and optimized connections
+        wait_time = 5  # Wait 5 seconds between uploads - much faster with our optimizations
+        self.update_task_progress(task_id, 5, f"Preparing upload (waiting {wait_time}s)...")
+        time.sleep(wait_time)
+        self.update_task_progress(task_id, 10, "Preparing Azure Video Indexer connection...")
+        
         # Import here to avoid circular imports
         try:
             from vi_search.prepare_db import prepare_db_with_progress
             from vi_search.constants import DATA_DIR
+            from vi_search.file_hash_cache import get_global_cache
             import os
             
             # Initialize language models and prompt content db directly
@@ -379,6 +461,21 @@ class TaskManager:
             logger.error(f"Failed to import dependencies for task {task_id}: {e}")
             raise Exception(f"System dependency error: {str(e)}")
         
+        # Fast duplicate check before processing
+        file_cache = get_global_cache()
+        if task.file_path and Path(task.file_path).exists():
+            cached_info = file_cache.get_cached_video_info(Path(task.file_path))
+            if cached_info:
+                self.update_task_progress(task_id, 95, f"Duplicate detected - using cached video_id {cached_info['video_id']}")
+                logger.info(f"Skipping duplicate file upload for {task.filename} - using cached video_id {cached_info['video_id']}")
+                # Skip to completion since it's already processed
+                task.status = TaskStatus.COMPLETED
+                task.progress = 100
+                task.current_step = f"Skipped duplicate - video already indexed as {cached_info['video_id']}"
+                task.completed_at = datetime.now()
+                self._save_task_to_db(task)
+                return
+
         # Process video with progress callbacks
         def progress_callback(step: str, progress: int):
             if task.status == TaskStatus.CANCELLED:
@@ -426,7 +523,102 @@ class TaskManager:
         # Save to database
         self._save_task_to_db(task)
         
-        logger.info(f"Task {task_id} completed successfully")
+        logger.info(f"File upload task {task_id} completed successfully")
+    
+    def _process_video_url_upload(self, task_id: str):
+        """Process video URL upload task"""
+        task = self.tasks[task_id]
+        video_url = task.file_path  # URL is stored in file_path
+        
+        # Step 1: Initialize
+        self.update_task_progress(task_id, 5, "Initializing URL video processing...")
+        
+        # Brief delay for URL uploads - reduced due to optimized connection handling
+        import time
+        wait_time = 3  # Wait 3 seconds between URL uploads (optimized with token caching)
+        self.update_task_progress(task_id, 8, f"Preparing URL upload (waiting {wait_time}s)...")
+        time.sleep(wait_time)
+        self.update_task_progress(task_id, 15, "Preparing Azure Video Indexer connection...")
+        
+        # Import necessary components
+        try:
+            from vi_search.vi_client.video_indexer_client import get_video_indexer_client_by_index
+            from vi_search.constants import BASE_DIR
+            from dotenv import dotenv_values
+            import os
+            
+            # Initialize language models and prompt content db
+            search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
+            if search_db == "chromadb":
+                from vi_search.prompt_content_db.chroma_db import ChromaDB
+                prompt_content_db = ChromaDB()
+            elif search_db == "azure_search":
+                from vi_search.prompt_content_db.azure_search import AzureVectorSearch
+                prompt_content_db = AzureVectorSearch()
+            else:
+                raise ValueError(f"Unknown search_db: {search_db}")
+
+            # Language models not needed for URL upload (would be used for text processing)
+            logger.info(f"Successfully imported dependencies for URL task {task_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to import dependencies for task {task_id}: {e}")
+            raise Exception(f"System dependency error: {str(e)}")
+        
+        # Call URL processing function (we'll need to create this)
+        logger.info(f"Starting URL video processing for task {task_id}")
+        try:
+            # Load VI configuration
+            config = dotenv_values(BASE_DIR / ".env")
+            client = get_video_indexer_client_by_index(config)
+            
+            # Upload video from URL
+            self.update_task_progress(task_id, 30, "Uploading video from URL...")
+            if video_url is None:
+                raise ValueError("Video URL is None")
+            video_id = client.upload_url_async(task.filename, video_url, wait_for_index=False)
+            
+            # Wait for indexing
+            self.update_task_progress(task_id, 50, "Waiting for video indexing...")
+            client.wait_for_index_async(video_id)
+            
+            # Generate prompt content and index to vector DB
+            self.update_task_progress(task_id, 70, "Processing video content...")
+            sections = client.get_prompt_content_async(video_id)
+            
+            # Add to vector database
+            prompt_content_db.set_db(task.library_name)
+            prompt_content_db.add_sections_to_db(sections, upload_batch_size=100)
+            
+        except Exception as e:
+            logger.error(f"URL processing failed for task {task_id}: {e}")
+            raise
+        
+        # Save video record to database
+        try:
+            video_data = {
+                'filename': task.filename,
+                'original_path': video_url,
+                'library_name': task.library_name,
+                'status': 'indexed',
+                'file_size': 0,  # Unknown for URL uploads
+                'indexed_at': datetime.now().isoformat()
+            }
+            db_manager.save_video_record(video_data)
+            logger.info(f"Video record saved for {task.filename}")
+        except Exception as ve:
+            logger.warning(f"Failed to save video record: {ve}")
+        
+        # Mark as completed
+        task.status = TaskStatus.COMPLETED
+        task.progress = 100
+        task.current_step = "URL processing completed successfully"
+        task.completed_at = datetime.now()
+        
+        # Save to database
+        self._save_task_to_db(task)
+        
+        logger.info(f"URL upload task {task_id} completed successfully")
     
     def _process_video_delete(self, task_id: str):
         """Process video deletion task"""
@@ -436,30 +628,57 @@ class TaskManager:
         self.update_task_progress(task_id, 10, "Starting video deletion...")
         
         try:
-            # Import app components
-            import sys
-            if 'app' in sys.modules:
-                app_module = sys.modules['app']
-                prompt_content_db = getattr(app_module, 'prompt_content_db', None)
-                if not prompt_content_db:
-                    raise ImportError("Cannot access prompt_content_db from app module")
-            else:
-                raise ImportError("App module not loaded")
+            # Import vector database components directly
+            try:
+                from vi_search.prompt_content_db.chroma_db import ChromaDB
+                from vi_search.prompt_content_db.azure_search import AzureVectorSearch
+                import os
+                
+                # Try to determine which vector db to use
+                # For now, try ChromaDB first
+                chroma_path = os.path.join(os.path.dirname(__file__), 'vi_search', '.chroma')
+                if os.path.exists(chroma_path):
+                    prompt_content_db = ChromaDB()
+                else:
+                    prompt_content_db = AzureVectorSearch()
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize vector database: {e}")
+                # If vector database fails, continue without it
+                prompt_content_db = None
             
             # Step 1: Remove from vector database
             self.update_task_progress(task_id, 30, "Removing from vector database...")
-            try:
-                # This would need implementation in prompt_content_db
-                # prompt_content_db.delete_video_documents(task.library_name, video_id)
-                logger.info(f"Removed vector documents for {video_id}")
-            except Exception as e:
-                logger.warning(f"Failed to remove vector documents: {e}")
+            if prompt_content_db is not None:
+                try:
+                    # Set the database to the correct library
+                    prompt_content_db.set_db(task.library_name)
+                    success = prompt_content_db.delete_video_documents(video_id)
+                    if success:
+                        logger.info(f"Successfully removed vector documents for {video_id}")
+                    else:
+                        logger.warning(f"No vector documents found for {video_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove vector documents: {e}")
+                    # Don't fail the entire task if vector deletion fails
+            else:
+                logger.warning("Vector database not available, skipping vector deletion")
             
-            # Step 2: Mark as deleted in database
-            self.update_task_progress(task_id, 70, "Updating database records...")
-            success = db_manager.mark_video_deleted(task.library_name, video_id)
+            # Step 2: Physically delete from database
+            self.update_task_progress(task_id, 70, "Physically deleting database records...")
+            library_variants = [
+                task.library_name,
+                task.library_name.replace('-instructions-', '-instruction-'),
+                task.library_name.replace('-instruction-', '-instructions-')
+            ]
+            success = False
+            for lib_name in library_variants:
+                success = db_manager.delete_video_record(lib_name, video_id)
+                if success:
+                    logger.info(f"Physically deleted video using library name: {lib_name}")
+                    break
             if not success:
-                raise Exception("Failed to mark video as deleted in database")
+                raise Exception(f"Failed to physically delete video in database. Tried library names: {library_variants}")
             
             # Step 3: Optional - Delete physical file (implement if needed)
             self.update_task_progress(task_id, 90, "Cleaning up files...")
@@ -510,10 +729,28 @@ class TaskManager:
                     self.update_task_progress(task_id, progress, f"Deleting {video_id}...")
                     
                     # Remove from vector database
-                    # prompt_content_db.delete_video_documents(task.library_name, video_id)
+                    try:
+                        # Set the database to the correct library
+                        prompt_content_db.set_db(task.library_name)
+                        success = prompt_content_db.delete_video_documents(video_id)
+                        if success:
+                            logger.info(f"Successfully removed vector documents for {video_id}")
+                        else:
+                            logger.warning(f"No vector documents found for {video_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove vector documents for {video_id}: {e}")
                     
-                    # Mark as deleted in database
-                    success = db_manager.mark_video_deleted(task.library_name, video_id)
+                    # Physically delete in database
+                    library_variants = [
+                        task.library_name,
+                        task.library_name.replace('-instructions-', '-instruction-'),
+                        task.library_name.replace('-instruction-', '-instructions-')
+                    ]
+                    success = False
+                    for lib_name in library_variants:
+                        success = db_manager.delete_video_record(lib_name, video_id)
+                        if success:
+                            break
                     if success:
                         deleted_count += 1
                     else:
@@ -545,10 +782,11 @@ class TaskManager:
             raise
     
     def _cleanup_old_tasks(self):
-        """Clean up old completed/failed tasks"""
+        """Clean up old completed/failed tasks (extended retention period)"""
         while not self.shutdown:
             try:
-                cutoff_time = datetime.now() - timedelta(hours=24)
+                # Extended retention period to 7 days instead of 24 hours
+                cutoff_time = datetime.now() - timedelta(days=7)
                 
                 with self.lock:
                     tasks_to_remove = [
@@ -559,10 +797,11 @@ class TaskManager:
                     ]
                     
                     for task_id in tasks_to_remove:
+                        logger.info(f"Cleaning up old task {task_id} (completed {(datetime.now() - self.tasks[task_id].completed_at).days} days ago)")
                         del self.tasks[task_id]
-                        logger.debug(f"Cleaned up old task {task_id}")
                 
-                time.sleep(3600)  # Clean up every hour
+                # Check every 6 hours instead of every hour to reduce frequency
+                time.sleep(6 * 3600)  # Clean up every 6 hours
             except Exception as e:
                 logger.error(f"Error in cleanup: {e}")
                 time.sleep(300)  # Wait 5 minutes on error

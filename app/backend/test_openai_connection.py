@@ -65,6 +65,10 @@ try:
     print("\n=== Testing Embedding Generation ===")
     test_text = "This is a test sentence for embedding generation."
     
+    # Ensure model is not None
+    if azure_openai_embeddings_deployment is None:
+        raise ValueError("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT is None")
+    
     response = client.embeddings.create(
         input=test_text,
         model=azure_openai_embeddings_deployment

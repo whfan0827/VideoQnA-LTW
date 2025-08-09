@@ -1,6 +1,4 @@
-import sqlite3
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from database.database_manager import db_manager
 from models import AITemplate
 import threading

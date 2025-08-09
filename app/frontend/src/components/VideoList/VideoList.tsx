@@ -193,7 +193,7 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             key: 'refresh',
             text: 'Refresh',
             iconProps: { iconName: 'Refresh' },
-            onClick: () => loadVideos()
+            onClick: () => { loadVideos(); }
         },
         {
             key: 'delete',

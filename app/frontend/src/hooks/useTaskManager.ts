@@ -24,10 +24,21 @@ export const useTaskManager = () => {
         if (savedTasks) {
             try {
                 const parsedTasks = JSON.parse(savedTasks);
-                const activeTasks = parsedTasks.filter((task: TaskStatus) => 
+                // Show all tasks including completed ones, but limit to recent 48 hours
+                const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48 hours ago
+                const allRecentTasks = parsedTasks.filter((task: TaskStatus) => {
+                    const taskDate = new Date(task.created_at);
+                    return taskDate > recentCutoff; // Show all tasks from recent 48 hours
+                });
+                
+                // Sort tasks by created_at descending (newest first)
+                allRecentTasks.sort((a: TaskStatus, b: TaskStatus) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                setTasks(allRecentTasks);
+                
+                // Only active tasks need polling
+                const activeTasks = allRecentTasks.filter((task: TaskStatus) => 
                     task.status === 'pending' || task.status === 'processing'
                 );
-                setTasks(activeTasks);
                 if (activeTasks.length > 0) {
                     setIsPolling(true);
                 }
@@ -58,7 +69,7 @@ export const useTaskManager = () => {
             created_at: new Date().toISOString()
         };
 
-        setTasks(prev => [...prev, newTask]);
+        setTasks(prev => [newTask, ...prev]);
         
         if (!isPolling) {
             setIsPolling(true);
@@ -137,12 +148,12 @@ export const useTaskManager = () => {
         }
     }, []);
 
-    // Polling logic
+    // Simple fixed interval polling to avoid multiple concurrent polling
     useEffect(() => {
         let interval: number;
 
         if (isPolling && tasks.length > 0) {
-            interval = setInterval(async () => {
+            const poll = async () => {
                 try {
                     setError(null);
                     
@@ -172,6 +183,10 @@ export const useTaskManager = () => {
                                     console.warn(`Invalid JSON for task ${task.task_id}:`, text);
                                     return { task_id: task.task_id, error: true };
                                 }
+                            } else if (response.status === 404) {
+                                // Task not found - remove from local state
+                                console.warn(`Task ${task.task_id} not found (404), removing from local state`);
+                                return { task_id: task.task_id, notFound: true };
                             } else {
                                 console.warn(`Failed to fetch status for task ${task.task_id}: ${response.status}`);
                                 return { task_id: task.task_id, error: true };
@@ -184,27 +199,44 @@ export const useTaskManager = () => {
 
                     const statuses = await Promise.all(statusPromises);
 
-                    // Update tasks with new statuses
-                    setTasks(prevTasks => 
-                        prevTasks.map(task => {
+                    // Update tasks with new statuses and maintain newest-first order
+                    setTasks(prevTasks => {
+                        const updated = prevTasks.filter(task => {
+                            const statusUpdate = statuses.find(s => s.task_id === task.task_id);
+                            // Remove tasks that were not found (404)
+                            if (statusUpdate?.notFound) {
+                                console.log(`Removing task ${task.task_id} from local state (not found)`);
+                                return false;
+                            }
+                            return true;
+                        }).map(task => {
                             const updatedStatus = statuses.find(s => s.task_id === task.task_id);
-                            return updatedStatus && !updatedStatus.error 
+                            return updatedStatus && !updatedStatus.error && !updatedStatus.notFound
                                 ? { ...task, ...updatedStatus }
                                 : task;
-                        })
-                    );
+                        });
+                        // Re-sort to maintain newest first order (in case started_at was updated)
+                        return updated.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                    });
 
                 } catch (error) {
                     console.error('Error polling task statuses:', error);
                     setError('Failed to update task statuses');
                 }
-            }, 3000); // Poll every 3 seconds
+            };
+
+            // Use fixed 10-second interval to avoid API flooding
+            interval = window.setInterval(poll, 20000);
+            console.log('Task polling started with 10s interval');
         }
 
         return () => {
-            if (interval) clearInterval(interval);
+            if (interval) {
+                clearInterval(interval);
+                console.log('Task polling stopped');
+            }
         };
-    }, [isPolling, tasks]);
+    }, [isPolling]);
 
     // Auto-stop polling when no active tasks remain
     useEffect(() => {

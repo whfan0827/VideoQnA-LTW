@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, PanelType, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption } from "@fluentui/react";
+import { Panel, PanelType, DefaultButton, Spinner, IDropdownOption } from "@fluentui/react";
 
 import styles from "./OneShot.module.css";
 
@@ -7,7 +7,6 @@ import { askApi, Approaches, AskResponse, AskRequest, indexesAPI } from "../../a
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
-import { IndexesDropdown } from "../../components/IndexesDropdown";
 import { LibraryManagementPanel } from "../../components/LibraryManagementPanel";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { AIParameterButton } from "../../components/AIParameterButton";
@@ -21,15 +20,15 @@ const OneShot = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
     const [isAIParameterPanelOpen, setIsAIParameterPanelOpen] = useState(false);
-    const [approach, setApproach] = useState<Approaches>(Approaches.ReadRetrieveReadVector);
-    const [promptTemplate, setPromptTemplate] = useState<string>("");
-    const [promptTemplatePrefix, setPromptTemplatePrefix] = useState<string>("");
-    const [promptTemplateSuffix, setPromptTemplateSuffix] = useState<string>("");
-    const [retrieveCount, setRetrieveCount] = useState<number>(3);
-    const [useSemanticRanker, setUseSemanticRanker] = useState<boolean>(true);
+    const [approach] = useState<Approaches>(Approaches.ReadRetrieveReadVector);
+    const [promptTemplate] = useState<string>("");
+    const [promptTemplatePrefix] = useState<string>("");
+    const [promptTemplateSuffix] = useState<string>("");
+    const [retrieveCount] = useState<number>(3);
+    const [useSemanticRanker] = useState<boolean>(true);
     const [index, setIndex] = useState<string>();
-    const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
-    const [excludeCategory, setExcludeCategory] = useState<string>("");
+    const [useSemanticCaptions] = useState<boolean>(false);
+    const [excludeCategory] = useState<string>("");
 
     const lastQuestionRef = useRef<string>("");
 
@@ -67,11 +66,6 @@ const OneShot = () => {
         }
     }, [indexes]);
     
-    const onIndexChanged = (index: string) => {
-        console.log("index changed to: " + index);
-        console.log("available indexes: ", indexes.map(i => ({ key: i.key, text: i.text })));
-        setIndex(index);
-    };
     
     const refreshIndexes = async () => {
         const newIndexes = await indexesAPI();
@@ -161,37 +155,13 @@ const OneShot = () => {
         }
     };
 
-    const onPromptTemplateChange = (_ev?: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, newValue?: string) => {
-        setPromptTemplate(newValue || "");
-    };
 
-    const onPromptTemplatePrefixChange = (_ev?: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, newValue?: string) => {
-        setPromptTemplatePrefix(newValue || "");
-    };
 
-    const onPromptTemplateSuffixChange = (_ev?: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, newValue?: string) => {
-        setPromptTemplateSuffix(newValue || "");
-    };
 
-    const onRetrieveCountChange = (_ev?: React.SyntheticEvent<HTMLElement, Event>, newValue?: string) => {
-        setRetrieveCount(parseInt(newValue || "3"));
-    };
 
-    const onApproachChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IChoiceGroupOption) => {
-        setApproach((option?.key as Approaches) || Approaches.ReadRetrieveReadVector);
-    };
 
-    const onUseSemanticRankerChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseSemanticRanker(!!checked);
-    };
 
-    const onUseSemanticCaptionsChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseSemanticCaptions(!!checked);
-    };
 
-    const onExcludeCategoryChanged = (_ev?: React.FormEvent, newValue?: string) => {
-        setExcludeCategory(newValue || "");
-    };
 
     const onExampleClicked = (example: string) => {
         makeApiRequest(example);
@@ -304,7 +274,7 @@ const OneShot = () => {
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsLibraryPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
-                customWidth="60%"
+                customWidth="80%"
                 type={PanelType.custom}
             >
                 <div className={styles.configSection}>

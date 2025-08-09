@@ -2,7 +2,6 @@
 """
 Test what happens with Azure Video Indexer question
 """
-import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -43,7 +42,7 @@ def test_azure_vi_question():
         
         # Get embeddings and search
         embeddings_vector = language_models.get_text_embeddings(test_question)
-        docs_by_id, results_content = prompt_content_db.vector_search(embeddings_vector, n_results=3)
+        _, results_content = prompt_content_db.vector_search(embeddings_vector, n_results=3)
         
         print(f"\n📊 Found {len(results_content)} results")
         
@@ -58,13 +57,14 @@ def test_azure_vi_question():
         # Show what's actually in the database
         print(f"\n📚 Database content summary:")
         collection_data = prompt_content_db.get_collection_data()
-        doc_count = len(collection_data['ids']) if collection_data['ids'] else 0
+        doc_count = len(collection_data['ids']) if collection_data.get('ids') else 0
         print(f"   Total documents: {doc_count}")
         
         if doc_count > 0:
             print(f"   Sample documents:")
             for i in range(min(3, doc_count)):
-                doc_content = collection_data['documents'][i][:100] + "..." if len(collection_data['documents'][i]) > 100 else collection_data['documents'][i]
+                doc_text = collection_data['documents'][i] if collection_data.get('documents') and i < len(collection_data['documents']) else ""
+                doc_content = (doc_text[:100] + "...") if doc_text and len(doc_text) > 100 else (doc_text or "No content")
                 print(f"      - {doc_content}")
         
         return True

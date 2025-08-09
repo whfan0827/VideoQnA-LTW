@@ -30,6 +30,9 @@ def test_openai_embedding():
             api_version="2024-02-01"
         )
         
+        if azure_openai_embeddings_deployment is None:
+            raise ValueError("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT is None")
+        
         response = client.embeddings.create(
             input="Test embedding generation",
             model=azure_openai_embeddings_deployment
@@ -62,6 +65,9 @@ def test_openai_chat():
             api_version="2024-02-01"
         )
         
+        if azure_openai_chatgpt_deployment is None:
+            raise ValueError("AZURE_OPENAI_CHATGPT_DEPLOYMENT is None")
+        
         response = client.chat.completions.create(
             model=azure_openai_chatgpt_deployment,
             messages=[
@@ -92,6 +98,13 @@ def test_service_principal():
         tenant_id = os.getenv('AZURE_TENANT_ID')
         client_id = os.getenv('AZURE_CLIENT_ID')
         client_secret = os.getenv('AZURE_CLIENT_SECRET')
+        
+        if tenant_id is None:
+            raise ValueError("AZURE_TENANT_ID is None")
+        if client_id is None:
+            raise ValueError("AZURE_CLIENT_ID is None")
+        if client_secret is None:
+            raise ValueError("AZURE_CLIENT_SECRET is None")
         
         credential = ClientSecretCredential(
             tenant_id=tenant_id,

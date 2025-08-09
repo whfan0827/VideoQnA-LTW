@@ -40,7 +40,6 @@ class LibrarySettings:
             created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
             updated_at=datetime.fromisoformat(data['updated_at']) if data.get('updated_at') else None
         )
-        }
     
     def validate(self):
         """Validate settings values"""

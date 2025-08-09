@@ -175,31 +175,6 @@ const AITemplateManager: React.FC<AITemplateManagerProps> = ({
     }
   };
 
-  const deleteTemplate = async (templateName: string) => {
-    if (!confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/templates/${templateName}`, {
-        method: 'DELETE',
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete template');
-      }
-      
-      await loadTemplates();
-      setMessage({ text: 'Template deleted successfully', type: MessageBarType.success });
-    } catch (error) {
-      console.error('Error deleting template:', error);
-      setMessage({ text: (error as Error).message, type: MessageBarType.error });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const templateOptions: IDropdownOption[] = templates.map(template => ({
     key: template.templateName,

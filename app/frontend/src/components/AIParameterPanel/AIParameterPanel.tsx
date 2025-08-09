@@ -6,9 +6,6 @@ import {
   PivotItem,
   MessageBar,
   MessageBarType,
-  Stack,
-  Text,
-  IconButton,
   DefaultButton,
 } from '@fluentui/react';
 
@@ -33,9 +30,16 @@ const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
   onDismiss,
   availableLibraries,
 }) => {
-  const [activeTab, setActiveTab] = useState('quickSetup');
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('aiParameterPanel_activeTab') || 'quickSetup';
+  });
   const [message, setMessage] = useState<PanelMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Persist activeTab to localStorage
+  useEffect(() => {
+    localStorage.setItem('aiParameterPanel_activeTab', activeTab);
+  }, [activeTab]);
 
   // Function to show messages
   const showMessage = (text: string, type: MessageBarType) => {

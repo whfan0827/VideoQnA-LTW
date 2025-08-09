@@ -49,6 +49,14 @@ try:
         print("❌ Missing Service Principal credentials")
         sys.exit(1)
     
+    # Validate required values are not None
+    if tenant_id is None:
+        raise ValueError("AZURE_TENANT_ID is None")
+    if client_id is None:
+        raise ValueError("AZURE_CLIENT_ID is None")
+    if client_secret is None:
+        raise ValueError("AZURE_CLIENT_SECRET is None")
+    
     # Create Service Principal credential
     credential = ClientSecretCredential(
         tenant_id=tenant_id,

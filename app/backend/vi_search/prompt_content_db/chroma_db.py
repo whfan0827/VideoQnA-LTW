@@ -27,7 +27,7 @@ class ChromaDB(PromptContentDB):
         ''' Create new or get existing chromadb collection.
 
         :param name: The name of the collection
-        :param vector_search_dimensions: The number of dimensions of the embeddings
+        :param vector_search_dimensions: The number of dimensions of the embeddings (unused in ChromaDB)
         '''
         collection = self.client.get_or_create_collection(name)
         self.db_name = name
@@ -96,11 +96,24 @@ class ChromaDB(PromptContentDB):
 
         docs_by_id = {}
         results_content = []
-        for idx, uid in enumerate(results['ids'][0]):
-            docs_by_id[uid] = results['metadatas'][0][idx]
-            docs_by_id[uid].update({'content': results['documents'][0][idx]})
-            docs_by_id[uid].update({'distance': results['distances'][0][idx]})
-            results_content.append(f'{uid}: {nonewlines(results["documents"][0][idx])}')
+        if results.get('ids') and len(results['ids']) > 0:
+            for idx, uid in enumerate(results['ids'][0]):
+                metadata_list = results.get('metadatas', [[]])
+                documents_list = results.get('documents', [[]])
+                distances_list = results.get('distances', [[]])
+                
+                # Safely access the first element of each list
+                metadata = metadata_list[0] if metadata_list and len(metadata_list) > 0 else []
+                documents = documents_list[0] if documents_list and len(documents_list) > 0 else []
+                distances = distances_list[0] if distances_list and len(distances_list) > 0 else []
+                
+                if idx < len(metadata):
+                    docs_by_id[uid] = metadata[idx] or {}
+                    if idx < len(documents):
+                        docs_by_id[uid].update({'content': documents[idx] or ''})
+                    if idx < len(distances):
+                        docs_by_id[uid].update({'distance': distances[idx] or 0.0})
+                    results_content.append(f'{uid}: {nonewlines(documents[idx] if idx < len(documents) else "")}')
 
         return docs_by_id, results_content
 
@@ -109,3 +122,38 @@ class ChromaDB(PromptContentDB):
 
         all_data = self.db_handle.get(include=['embeddings', 'documents', 'metadatas'])
         return all_data
+
+    def delete_video_documents(self, video_id: str) -> bool:
+        """
+        Delete all documents belonging to a specific video from the collection.
+        
+        :param video_id: The video ID to delete documents for
+        :return: True if deletion was successful, False otherwise
+        """
+        try:
+            # Get all documents with the specific video_id
+            all_data = self.db_handle.get(include=['metadatas'])
+            
+            metadatas = all_data.get('metadatas')
+            if not metadatas:
+                logger.warning(f"No metadata found in collection")
+                return False
+            
+            # Find IDs that match the video_id
+            ids_to_delete = []
+            for idx, metadata in enumerate(metadatas):
+                if metadata and metadata.get('video_id') == video_id:
+                    ids_to_delete.append(all_data['ids'][idx])
+            
+            if ids_to_delete:
+                # Delete the documents
+                self.db_handle.delete(ids=ids_to_delete)
+                logger.info(f"Deleted {len(ids_to_delete)} documents for video {video_id}")
+                return True
+            else:
+                logger.warning(f"No documents found for video {video_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to delete documents for video {video_id}: {e}")
+            return False

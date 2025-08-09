@@ -19,15 +19,6 @@ export const TaskProgressCard = ({ task, onRemove, onCancel }: TaskProgressCardP
         }
     };
 
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'completed': return 'CheckMark';
-            case 'failed': return 'ErrorBadge';
-            case 'processing': return 'ProgressRingDots';
-            case 'cancelled': return 'Cancel';
-            default: return 'Clock';
-        }
-    };
 
     const isActive = task.status === 'pending' || task.status === 'processing';
     const isCompleted = task.status === 'completed';
