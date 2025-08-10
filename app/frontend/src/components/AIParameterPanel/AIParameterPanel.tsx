@@ -15,9 +15,8 @@ import TemplateManagementTab from './TemplateManagementTab';
 import styles from './AIParameterPanel.module.css';
 
 interface AIParameterPanelProps {
-  isOpen: boolean;
-  onDismiss: () => void;
   availableLibraries: Array<{ key: string; text: string }>;
+  onMessage?: (text: string, type: MessageBarType) => void;
 }
 
 interface PanelMessage {
@@ -26,9 +25,8 @@ interface PanelMessage {
 }
 
 const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
-  isOpen,
-  onDismiss,
   availableLibraries,
+  onMessage,
 }) => {
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('aiParameterPanel_activeTab') || 'quickSetup';
@@ -45,6 +43,10 @@ const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
   const showMessage = (text: string, type: MessageBarType) => {
     setMessage({ text, type });
     setTimeout(() => setMessage(null), 5000);
+    // Also call parent onMessage if provided
+    if (onMessage) {
+      onMessage(text, type);
+    }
   };
 
   // Handle tab switching
@@ -54,33 +56,8 @@ const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
     }
   };
 
-  // Reset dialog state
-  const resetDialog = () => {
-    setActiveTab('quickSetup');
-    setMessage(null);
-    setIsLoading(false);
-  };
-
-  // Close dialog
-  const handleDismiss = () => {
-    resetDialog();
-    onDismiss();
-  };
-
   return (
-    <Panel
-      headerText="AI Parameter Configuration"
-      isOpen={isOpen}
-      isBlocking={false}
-      onDismiss={handleDismiss}
-      closeButtonAriaLabel="Close"
-      onRenderFooterContent={() => (
-        <DefaultButton onClick={handleDismiss}>Close</DefaultButton>
-      )}
-      isFooterAtBottom={true}
-      customWidth="80%"
-      type={PanelType.custom}
-    >
+    <div>
       {/* Panel Subtitle */}
       <div className={styles.panelSubtitleSection}>
         <p className={styles.panelSubtitle}>
@@ -157,6 +134,8 @@ const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
             />
           )}
         </div>
-    </Panel>
+    </div>
   );
-};export default AIParameterPanel;
+};
+
+export default AIParameterPanel;

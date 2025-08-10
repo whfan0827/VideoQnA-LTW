@@ -9,13 +9,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Recent Major Improvements (2025)
 - ✅ **File Hash Cache System**: MD5-based duplicate detection to prevent redundant uploads
 - ✅ **Network Optimization**: Shared session pooling, token caching, reduced connection errors  
-- ✅ **Task Management**: Async processing with retry logic and progress tracking
-- ✅ **Database Persistence**: SQLite-based task storage with 7-day retention
-- ✅ **Performance Optimizations**: Reduced API rate limiting delays from 120s to 5s
+- ✅ **Task Management**: Async processing with retry logic, progress tracking, and 7-day cleanup
+- ✅ **Rate Limiting Optimization**: Reduced upload delays to 5s with intelligent rate limiting
 
 ## Development Commands
 
-My program and comments must be in English and no emoji, but when chatting with me in terminal please use Traditional Chinese.
+- My program and comments must be in English and no emoji, but when chatting with me in terminal please use Traditional Chinese.
+- no mock test
 
 
 ### Environment Setup

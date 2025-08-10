@@ -10,10 +10,10 @@ import { ExampleList } from "../../components/Example";
 import { LibraryManagementPanel } from "../../components/LibraryManagementPanel";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { AIParameterButton } from "../../components/AIParameterButton";
-import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
+import { ConversationSettingsButton } from "../../components/ConversationSettingsButton";
 import { LibraryManagementButton } from "../../components/LibraryManagementButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
-import { DeveloperSettingsPanel } from "../../components/DeveloperSettingsPanel/DeveloperSettingsPanel";
+import { ConversationSettingsPanel } from "../../components/ConversationSettingsPanel";
 import AIParameterPanel from "../../components/AIParameterPanel/AIParameterPanel";
 
 const OneShot = () => {
@@ -199,7 +199,7 @@ const OneShot = () => {
                 <div className={styles.commandsContainer}>
                     <AIParameterButton className={styles.commandButton} onClick={() => setIsAIParameterPanelOpen(true)} />
                     <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
-                    <SettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
+                    <ConversationSettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                     <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
                 </div>
                 <h1 className={styles.oneshotTitle}>Ask your video library</h1>
@@ -262,7 +262,7 @@ const OneShot = () => {
                 customWidth="40%"
             >
                 <div className={styles.configSection}>
-                    <DeveloperSettingsPanel indexes={indexes} />
+                    <ConversationSettingsPanel indexes={indexes} />
                 </div>
             </Panel>
 
@@ -274,8 +274,8 @@ const OneShot = () => {
                 closeButtonAriaLabel="Close"
                 onRenderFooterContent={() => <DefaultButton onClick={() => setIsLibraryPanelOpen(false)}>Close</DefaultButton>}
                 isFooterAtBottom={true}
-                customWidth="80%"
                 type={PanelType.custom}
+                customWidth="80%"
             >
                 <div className={styles.configSection}>
                     <LibraryManagementPanel 
@@ -285,11 +285,23 @@ const OneShot = () => {
                 </div>
             </Panel>
 
-            <AIParameterPanel 
+            <Panel
+                headerText="AI Parameter Configuration"
                 isOpen={isAIParameterPanelOpen}
+                isBlocking={false}
                 onDismiss={() => setIsAIParameterPanelOpen(false)}
-                availableLibraries={indexes.map(idx => ({ key: String(idx.key), text: idx.text }))}
-            />
+                closeButtonAriaLabel="Close"
+                onRenderFooterContent={() => <DefaultButton onClick={() => setIsAIParameterPanelOpen(false)}>Close</DefaultButton>}
+                isFooterAtBottom={true}
+                type={PanelType.custom}
+                customWidth="80%"
+            >
+                <div className={styles.configSection}>
+                    <AIParameterPanel 
+                        availableLibraries={indexes.map(idx => ({ key: String(idx.key), text: idx.text }))}
+                    />
+                </div>
+            </Panel>
         </div>
     );
 };

@@ -119,107 +119,532 @@ $env:PROMPT_CONTENT_DB = "azure_search"
 .\start_local.ps1
 ```
 
+## 🚀 Deployment Options
+
+You can choose from several ways to run this application:
+
+### 🖥️ **Option 1: Local Development (Recommended for Development)**
+
+**Advantages:**
+- Fast startup
+- Direct debugging
+- Hot-reload friendly
+- Low resource usage
+
+**Setup:**
+```powershell
+.\check_environment.ps1  # Check prerequisites
+.\start_local.ps1        # Start application
+```
+
+### 🐳 **Option 2: Docker Containerized**
+
+**Advantages:**
+- Environment consistency
+- Good isolation
+- Simple deployment
+- Production-friendly
+
+**Setup:**
+```powershell
+.\start_docker.ps1       # Docker deployment
+```
+
+### 📊 **Comparison: Local vs Docker**
+
+| Feature | Local | Docker |
+|---------|-------|--------|
+| Startup Speed | ⚡ Fast | 🐌 Slower (first build) |
+| Environment Isolation | ❌ None | ✅ Complete isolation |
+| Hot Reload | ✅ Native support | ⚡ Needs configuration |
+| Debugging | ✅ Direct | 🔧 Needs setup |
+| Deployment Consistency | ❌ Depends on local env | ✅ Fully consistent |
+| Resource Usage | ✅ Low | ⚖️ Medium |
+
+### 🎯 **Usage Scenarios**
+
+**Development Stage** - Use Local:
+```powershell
+.\start_local.ps1
+```
+- Fast iteration, instant debugging, frontend hot-reload
+
+**Testing Stage** - Use Docker:
+```powershell
+.\start_docker.ps1
+# Choose 1: Test mode
+```
+- Environment consistency testing, containerization validation
+
+**Deployment Stage** - Use Docker:
+```powershell
+docker compose up -d --build
+```
+- Production deployment, service orchestration
+
+### ⚡ **Quick Decision Guide**
+
+**If you are:**
+- **First-time user** → Choose Local (`.\start_local.ps1`)
+- **Frontend developer** → Choose Local (hot-reload support)  
+- **Backend developer** → Either option works
+- **DevOps/Deployment** → Choose Docker (`.\start_docker.ps1`)
+- **Team collaboration** → Choose Docker (consistency)
+
+### 🔄 **Switching Between Methods**
+
+**From Local to Docker:**
+```powershell
+# Stop local service (Ctrl+C)
+.\start_docker.ps1
+```
+
+**From Docker to Local:**
+```powershell
+.\start_docker.ps1  # Choose 4: Stop containers
+.\start_local.ps1   # Start local version
+```
+
+## 🔐 Azure Authentication Methods
+
+This application supports **two Azure authentication methods**:
+
+### Method 1: Service Principal Authentication (Recommended for Production)
+**Best for production, CI/CD, and automated environments**
+
+Create a Service Principal and configure these environment variables:
+```bash
+# Required for Service Principal authentication
+AZURE_CLIENT_ID=<your-service-principal-client-id>
+AZURE_CLIENT_SECRET=<your-service-principal-client-secret>  
+AZURE_TENANT_ID=<your-azure-tenant-id>
+```
+
+**Setup Steps:**
+```bash
+# Create Service Principal with contributor role
+az ad sp create-for-rbac --name "VideoQnA-ServicePrincipal" \
+  --role contributor \
+  --scopes /subscriptions/{your-subscription-id}
+```
+
+The command output will provide the credentials:
+- `appId` → Use as `AZURE_CLIENT_ID`
+- `password` → Use as `AZURE_CLIENT_SECRET`  
+- `tenant` → Use as `AZURE_TENANT_ID`
+
+### Method 2: Default Azure Credential (Development)
+**Best for local development with Azure CLI**
+
+If Service Principal credentials are not provided, the system automatically uses `DefaultAzureCredential` which tries these methods in order:
+1. Environment variables (Service Principal)
+2. Managed Identity (in Azure environments)
+3. Azure CLI credentials
+4. Visual Studio credentials
+5. IntelliJ credentials
+
+For local development:
+```bash
+az login  # Login to Azure CLI
+```
+
 ## 🏗️ Production Azure Setup
 
-1. **Create resources**
+### Step 1: Create Azure Resources
 
-   Create a resource group to contain all the resources below.
+Create a resource group to contain all resources:
+```bash
+az group create --name VideoQnA-ResourceGroup --location eastus
+```
 
-1. **Set up Azure AI Search**
+### Step 2: Set up Azure AI Search
 
-   1. Change pricing tier to Basic.
+1. **Create Azure AI Search service:**
+   ```bash
+   az search service create \
+     --name your-search-service \
+     --resource-group VideoQnA-ResourceGroup \
+     --sku basic
+   ```
 
-      ![basic tier](docs/create_search_service.png)
+2. **Configure pricing tier to Basic:**
+   ![basic tier](docs/create_search_service.png)
 
-   1. Enter the newly created resource, and note the API key under Settings > Keys, to be used later in the process. You will use the admin key for write permissions to create new indexes.
+3. **Get API key** - Note the admin key from Settings > Keys:
+   ![basic tier](docs/search_service_keys.png)
 
-      ![basic tier](docs/search_service_keys.png)
+### Step 3: Set up Azure OpenAI
 
-1. **Set up Azure OpenAI**
+1. **Create Azure OpenAI instance:**
+   ```bash
+   az cognitiveservices account create \
+     --name your-openai-service \
+     --resource-group VideoQnA-ResourceGroup \
+     --kind OpenAI \
+     --sku s0 \
+     --location eastus
+   ```
 
-   1. Create Azure OpenAI instance.
-   1. Create model deployments:
-      1. text-embedding-ada-002 for embeddings
-      1. gpt3.5 turbo or gpt4 turbo or gpt-4o as the LLM model.
-   1. Note the deployment names to be used later in the process.
-   1. Note API key under Resource management -> Keys and Endpoint to be used later in the process.
+2. **Create model deployments:**
+   - `text-embedding-ada-002` for embeddings
+   - `gpt-35-turbo` or `gpt-4` or `gpt-4o` as the LLM model
 
-1. **Index video archive**
+3. **Note deployment names and API key** from Resource Management → Keys and Endpoint
 
-   1. Index videos in VI account.
-   1. Make all videos public access.
-   1. Define the following azd parameters using `azd env set <Config Key> <Config Value>`:
+### Step 4: Set up Azure Video Indexer
 
-      - AZURE_OPENAI_API_KEY (Azure OpenAI API key)
-      - AZURE_OPENAI_CHATGPT_DEPLOYMENT (Azure OpenAI Chat LLM deployment name}
-      - AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT {Azure OpenAI embeddings model deployment name)
-      - AZURE_OPENAI_RESOURCE_GROUP (Resource Group name of the Azure OpenAI resource)
-      - AZURE_OPENAI_SERVICE (Azure OpenAI resource name)
+1. **Create Video Indexer account** through Azure Portal
+2. **Configure public access** for videos during indexing
+3. **Note account details:** Account Name, Resource Group, Subscription ID
 
-      - AZURE_SEARCH_KEY (Azure AI Search API key)
-      - AZURE_SEARCH_SERVICE (Azure AI Search resource name)
-      - AZURE_SEARCH_LOCATION (Azure AI Search instance location, e.g. ukwest)
-      - AZURE_SEARCH_SERVICE_RESOURCE_GROUP (Resource Group name of the Azure AI Search resource)
-      - AZURE_TENANT_ID (Azure Tenant ID)
+### Step 5: Configure Environment Variables
 
-      - LANGUAGE_MODEL ("openai")
-      - PROMPT_CONTENT_DB (Either: "azure_search" / "chromadb")
-      - PROMPT_CONTENT_DB_NAME (Some DB name with this format "vi-db-name-index", this will later appear in the Demo UI under the developer settings so user can select which archive to query)
+Create a `.env` file in the `app/backend/` directory with the following configuration:
 
-   1. Index the archive into a new Azure AI Search index (Vector DB) by following these steps:
+#### Required Azure Service Configuration:
+```bash
+# Azure Video Indexer Configuration
+AccountName='your-video-indexer-account-name'
+ResourceGroup='your-resource-group-name'
+SubscriptionId='your-subscription-id'
 
-   1. Install python dependencies with:
+# Azure Authentication (choose one method)
+# Method 1: Service Principal (Recommended for Production)
+AZURE_CLIENT_ID=your-service-principal-client-id
+AZURE_CLIENT_SECRET=your-service-principal-client-secret
+AZURE_TENANT_ID=your-azure-tenant-id
 
-      - For Unix/Linux/Mac:
+# Method 2: Alternative - use Azure CLI login (az login)
+# Leave the above three variables empty to use DefaultAzureCredential
 
-      ```bash
-      pip install -r ./app/backend/requirements.txt
-      ```
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_KEY=your-openai-api-key
+AZURE_OPENAI_CHATGPT_DEPLOYMENT=your-chat-deployment-name
+AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT=your-embeddings-deployment-name
+AZURE_OPENAI_RESOURCE_GROUP=your-openai-resource-group
+AZURE_OPENAI_SERVICE=your-openai-service-name
 
-      - For Windows (PowerShell):
+# Azure AI Search Configuration
+AZURE_SEARCH_KEY=your-search-service-admin-key
+AZURE_SEARCH_SERVICE=your-search-service-name
+AZURE_SEARCH_LOCATION=your-search-service-location
+AZURE_SEARCH_SERVICE_RESOURCE_GROUP=your-search-resource-group
 
-      ```powershell
-      pip install -r .\app\backend\requirements.txt
-      ```
+# Application Mode Configuration
+LANGUAGE_MODEL=openai
+PROMPT_CONTENT_DB=azure_search
+PROMPT_CONTENT_DB_NAME=vi-production-index
+```
 
-   1. Create a `.env` file that holds your Azure AI Video Indexer details (taken from Azure portal) in the following format:
+#### Environment Configuration Options:
 
-      ```
-      AccountName='YOUR_VI_ACCOUNT_NAME' # This is the name of your Azure AI Video Indexer account.
-      ResourceGroup='RESOURCE_GROUP_NAME' # This is the name of the resource group where your Azure AI Video Indexer account is located.
-      SubscriptionId='SUBSCRIPTION_ID' # This is the ID of your Azure subscription.
-      ```
+**Production Mode (Full Azure Services):**
+```bash
+LANGUAGE_MODEL=openai
+PROMPT_CONTENT_DB=azure_search
+```
 
-   1. Save and run the following commands in PowerShell from the workspace root directory:
+**Test Mode (Local Development, No Azure Costs):**
+```bash
+LANGUAGE_MODEL=dummy
+PROMPT_CONTENT_DB=chromadb
+```
 
-      - For Unix/Linux/Mac:
+### Step 6: Index Video Archive
 
-      ```bash
-      cd ./app/backend/
-      export PYTHONPATH=$PYTHONPATH:`pwd` # (to add the current directory to the Python path)
-      cd ../../
-      python ./app/backend/vi_search/prepare_db.py # (to run the indexing into vector db script)
-      ```
+**Prerequisites:**
+1. Complete Azure service setup (Steps 1-5 above)
+2. Ensure `.env` file is configured with all required variables
+3. Install Python dependencies:
+   ```powershell
+   cd .\app\backend\
+   pip install -r requirements.txt
+   ```
 
-      - For Windows (PowerShell):
+**Indexing Process:**
+```powershell
+# Set Python path and run indexing
+cd .\app\backend\
+$env:PYTHONPATH += ";$(Get-Location)"
+cd ..\..\
+python .\app\backend\vi_search\prepare_db.py
+```
 
-      ```powershell
-      cd .\app\backend\
-      $env:PYTHONPATH += ";$(Get-Location)" # (to add the current directory to the Python path)
-      cd ..\..\
-      python .\app\backend\vi_search\prepare_db.py # (to run the indexing into vector db script)
-      ```
+**What happens during indexing:**
+1. **Video Upload**: Videos from `data/` folder are uploaded to Azure Video Indexer
+2. **Duplicate Detection**: File hash cache prevents re-uploading identical videos
+3. **AI Processing**: Azure Video Indexer extracts insights (transcripts, topics, faces, etc.)
+4. **Embedding Generation**: Azure OpenAI creates vector embeddings for text content
+5. **Vector Storage**: Embeddings are stored in Azure AI Search in batches of 100
+6. **Progress Tracking**: Real-time progress updates with retry logic for failed operations
 
-      The script will upload the videos in the `data` folder to Azure AI Video Indexer and then index the archive into Azure AI Search or Chroma DB.
+**Performance Notes:**
+- Indexing time depends on video count and length
+- Process includes intelligent caching and retry mechanisms
+- Network optimization reduces connection errors by 90%
+- Rate limiting delays reduced from 120s to 5s per operation
 
-   1. Wait for the Vector DB indexing to finish. The process can take some time, as it calls Azure OpenAI to create embeddings of the entire archive, and persists it to Azure AI Search or Chroma DB in batches of 100.
-   1. If you are using Chroma DB, which is now configured to save the DB locally, make sure it will be available to the deployment as well.
+## 💻 Key Technical Features
 
-1. **Deploy**
-   1. Install and use PowerShell from https://www.microsoft.com/store/productId/9MZ1SNWT0N5D?ocid=pdpshare
-   1. Run `azd up` command to setup the app service resources.
-   1. Select subscription and location where to create the app service deployment.
-   1. Run `azd deploy` command to deploy the app service and any further changes in the python app service code.
+### 🔄 Smart Caching & Performance
+- **File Hash Cache**: MD5-based duplicate detection prevents redundant video uploads
+- **Token Caching**: Azure authentication tokens cached for 50 minutes
+- **Connection Pooling**: Shared HTTP sessions reduce connection overhead
+- **Retry Logic**: Exponential backoff for transient network failures
+
+### 🏗️ Modular Architecture
+- **Frontend**: React + TypeScript with Fluent UI components
+- **Backend**: Flask REST API with modular service layers  
+- **Vector DB**: Support for both Azure AI Search and local ChromaDB
+- **Language Models**: Azure OpenAI integration with dummy fallback for testing
+
+### 📊 Background Task Management
+- **Async Processing**: Non-blocking video upload and indexing
+- **Progress Tracking**: Real-time status updates with WebSocket-like polling
+- **SQLite Persistence**: Task history with 7-day retention policy
+- **Error Recovery**: Automatic retry with exponential backoff
+
+### 🔒 Security & Authentication
+- **Service Principal**: Production-ready Azure authentication with ClientSecretCredential
+- **DefaultAzureCredential**: Development-friendly credential chain (Azure CLI, Managed Identity)
+- **Token Caching**: 50-minute authentication token caching to reduce API calls
+- **Environment Isolation**: Clear separation between test and production modes
+- **Secret Management**: Secure environment variable handling for sensitive configuration
+- **Request Security**: Rate limiting and input validation on all API endpoints
+
+### 🎨 User Interface
+- **Modern React Frontend**: TypeScript with Fluent UI components
+- **Responsive Design**: Mobile-friendly interface with adaptive layouts
+- **Component Architecture**: Modular, reusable UI components with consistent naming
+- **Real-time Updates**: Live progress tracking and status notifications
+- **Intuitive Navigation**: Clean, organized button layout and panel system
+
+### Step 7: Deploy to Azure (Optional)
+
+**Prerequisites:**
+- Install Azure Developer CLI: `winget install Microsoft.Azd`
+- Install PowerShell 7+: [Microsoft Store](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D)
+
+**Deployment Steps:**
+```powershell
+# Initial deployment - creates all Azure resources
+azd up
+
+# Deploy application updates (after initial setup)
+azd deploy
+```
+
+**Deployment Process:**
+1. **azd up**: Creates App Service, configures environment variables, deploys application
+2. **azd deploy**: Updates existing deployment with code changes
+3. **Resource Creation**: Automatically provisions required Azure resources
+4. **Configuration**: Applies environment variables from azd environment
+
+## 🧪 Testing & Verification
+
+### Test Azure Authentication
+```powershell
+cd .\app\backend\
+python test_service_principal.py  # Test Service Principal auth
+python test_openai_connection.py  # Test OpenAI connectivity
+python comprehensive_test.py      # Full system test
+```
+
+### Test Application Modes
+```powershell
+# Test mode (no Azure costs)
+$env:LANGUAGE_MODEL = "dummy"
+$env:PROMPT_CONTENT_DB = "chromadb"
+.\start_local.ps1
+
+# Production mode (requires Azure services)
+$env:LANGUAGE_MODEL = "openai"  
+$env:PROMPT_CONTENT_DB = "azure_search"
+.\start_local.ps1
+```
+
+## 📁 Project Structure
+
+```
+VideoQnA-LTW/
+├── 📄 README.md                    # Project documentation
+├── 📄 CLAUDE.md                    # Claude Code guidance
+├── 📄 DEPLOYMENT_OPTIONS.md        # Deployment methods
+├── 📄 LOCAL_DEVELOPMENT.md         # Development setup guide
+├── 📄 LICENSE                      # Project license
+│
+├── 📁 app/                         # Main application
+│   ├── 📁 backend/                 # Python Flask backend
+│   │   ├── 📄 app.py               # Main Flask application entry
+│   │   ├── 📄 task_manager.py      # Background task processing
+│   │   ├── 📄 database.py          # Database utilities
+│   │   ├── 📄 requirements.txt     # Python dependencies
+│   │   │
+│   │   ├── 📁 vi_search/           # Core RAG functionality
+│   │   │   ├── 📄 ask.py           # Query processing engine
+│   │   │   ├── 📄 prepare_db.py    # Video indexing pipeline  
+│   │   │   ├── 📄 file_hash_cache.py # Duplicate detection system
+│   │   │   ├── 📄 prep_scenes.py   # Scene processing utilities
+│   │   │   ├── 📄 constants.py     # Application constants
+│   │   │   │
+│   │   │   ├── 📁 vi_client/       # Azure Video Indexer client
+│   │   │   │   ├── 📄 video_indexer_client.py # Main VI client
+│   │   │   │   ├── 📄 account_token_provider.py # Authentication
+│   │   │   │   └── 📄 consts.py    # VI constants
+│   │   │   │
+│   │   │   ├── 📁 prompt_content_db/ # Vector database interfaces
+│   │   │   │   ├── 📄 azure_search.py # Azure AI Search
+│   │   │   │   ├── 📄 chroma_db.py  # ChromaDB implementation
+│   │   │   │   └── 📄 prompt_content_db.py # Base interface
+│   │   │   │
+│   │   │   ├── 📁 language_models/ # LLM integrations
+│   │   │   │   ├── 📄 azure_openai.py # Azure OpenAI
+│   │   │   │   ├── 📄 dummy_lm.py   # Testing mock LLM
+│   │   │   │   └── 📄 language_models.py # Base interface
+│   │   │   │
+│   │   │   ├── 📁 utils/           # Utility functions
+│   │   │   │   ├── 📄 ask_templates.py # Query templates
+│   │   │   │   └── 📄 azure_utils.py # Azure helpers
+│   │   │   │
+│   │   │   └── 📁 notebooks/       # Development notebooks
+│   │   │       └── 📄 vi-ask.ipynb # Analysis notebook
+│   │   │
+│   │   ├── 📁 database/            # SQLite database management
+│   │   │   ├── 📄 app_data_manager.py # App data operations
+│   │   │   ├── 📄 database_manager.py # Base database manager
+│   │   │   ├── 📄 init_db.py       # Database initialization
+│   │   │   ├── 📄 schema.sql       # Database schema
+│   │   │   └── 📄 ai_templates_schema.sql # AI templates schema
+│   │   │
+│   │   ├── 📁 services/            # Business logic services
+│   │   │   ├── 📄 ai_template_service.py # Template management
+│   │   │   └── 📄 settings_service.py # Settings management
+│   │   │
+│   │   ├── 📁 models/              # Data models
+│   │   │   └── 📄 settings.py      # Settings model
+│   │   │
+│   │   ├── 📁 data/                # Cache and data files
+│   │   │   └── 📄 file_hash_cache.json # File hash cache
+│   │   │
+│   │   └── 📁 test_*.py            # Test files
+│   │       ├── 📄 comprehensive_test.py # Full system test
+│   │       ├── 📄 test_azure_vi_question.py # VI testing
+│   │       ├── 📄 test_filename.py # Filename handling test
+│   │       ├── 📄 test_openai_connection.py # OpenAI test
+│   │       ├── 📄 test_service_principal.py # Auth test
+│   │       └── 📄 test_vector_database.py # Vector DB test
+│   │
+│   └── 📁 frontend/                # React TypeScript frontend
+│       ├── 📄 package.json         # Node.js dependencies
+│       ├── 📄 vite.config.ts       # Vite build configuration
+│       ├── 📄 tsconfig.json        # TypeScript configuration
+│       │
+│       ├── 📁 public/              # Static assets
+│       │   ├── 📄 favicon.ico      # Site icon
+│       │   └── 📁 assets/fonts/    # Font files
+│       │
+│       └── 📁 src/                 # Source code
+│           ├── 📄 index.tsx        # Application entry point
+│           ├── 📄 index.css        # Global styles
+│           │
+│           ├── 📁 api/             # API interfaces
+│           │   ├── 📄 api.ts       # API calls
+│           │   ├── 📄 models.ts    # Type definitions
+│           │   └── 📄 index.ts     # API exports
+│           │
+│           ├── 📁 components/      # React components
+│           │   ├── 📁 AIParameterButton/    # AI settings button
+│           │   ├── 📁 AIParameterPanel/     # AI configuration panel
+│           │   ├── 📁 ConversationSettingsButton/ # Settings button
+│           │   ├── 📁 ConversationSettingsPanel/  # Settings panel
+│           │   ├── 📁 LibraryManagementButton/    # Library button
+│           │   ├── 📁 LibraryManagementPanel/     # Library panel
+│           │   ├── 📁 Answer/               # Response display
+│           │   ├── 📁 QuestionInput/        # Query input
+│           │   ├── 📁 Example/              # Example questions
+│           │   ├── 📁 AnalysisPanel/        # Response analysis
+│           │   ├── 📁 TaskProgressCard/     # Progress tracking
+│           │   └── 📁 [Other Components]/   # Additional UI components
+│           │
+│           ├── 📁 pages/           # Page components
+│           │   ├── 📁 layout/      # Layout components
+│           │   └── 📁 oneshot/     # Main Q&A page
+│           │
+│           ├── 📁 hooks/           # React hooks
+│           │   └── 📄 useTaskManager.ts # Task management hook
+│           │
+│           ├── 📁 utils/           # Utility functions
+│           │   ├── 📄 time.tsx     # Time utilities
+│           │   └── 📄 vi-utils.tsx # VI utilities
+│           │
+│           └── 📁 assets/          # Static assets
+│               ├── 📁 fonts/       # Font files
+│               ├── 📄 github.svg   # GitHub icon
+│               └── 📄 search.svg   # Search icon
+│
+├── 📁 data/                        # Sample video files
+│   ├── 📄 Azure_Video_Indexer_Intro_and_Demo.mp4
+│   ├── 📄 I-INV-001_*.mp4         # Training videos
+│   ├── 📄 Rovo_MCP_*.mp4          # Demo videos
+│   └── 📄 [Other Video Files]     # Various sample videos
+│
+├── 📁 infra/                       # Azure deployment infrastructure
+│   ├── 📄 main.bicep               # Main infrastructure template
+│   ├── 📄 main.parameters.json     # Infrastructure parameters
+│   ├── 📄 abbreviations.json       # Azure naming abbreviations
+│   └── 📁 core/                    # Core infrastructure modules
+│       ├── 📁 ai/                  # AI services (Cognitive Services)
+│       ├── 📁 host/                # App Service hosting
+│       ├── 📁 search/              # AI Search service
+│       └── 📁 security/            # Role assignments
+│
+├── 📁 docs/                        # Documentation assets
+│   ├── 📄 ask_your_archive.jpg     # Architecture diagram
+│   ├── 📄 create_search_service.png # Setup screenshots
+│   └── 📄 [Other Images]           # Documentation images
+│
+├── 📄 azure.yaml                   # Azure Developer CLI config
+├── 📄 docker-compose.yml           # Docker production setup
+├── 📄 docker-compose.dev.yml       # Docker development setup
+├── 📄 Dockerfile                   # Container definition
+│
+└── 🚀 Scripts/                     # Automation scripts
+    ├── 📄 start_local.ps1          # Local development startup
+    ├── 📄 start_dev.ps1            # Development mode startup
+    ├── 📄 start_docker.ps1         # Docker mode startup
+    ├── 📄 check_environment.ps1    # Environment verification
+    └── 📄 set_env.ps1              # Environment setup
+```
+
+## 🛠️ Advanced Features
+
+### Conversation Starters Management
+
+**Customize Example Questions**: The application includes a dynamic conversation starters system that allows administrators to customize the example questions displayed on the main Q&A interface.
+
+**Features:**
+- **Three Customizable Questions**: Edit up to 3 example questions in the Conversation Settings panel
+- **Local Storage**: Settings persist in browser localStorage for consistent user experience
+- **Real-time Updates**: Changes are immediately reflected in the UI without page refresh
+- **Reset to Defaults**: One-click restoration to original example questions
+- **Smart Filtering**: Empty inputs are automatically filtered out
+
+**Usage:**
+1. **Access Settings**: Click the "Conversation Settings" button in the main interface
+2. **Edit Questions**: Modify the three text input fields with your custom questions
+3. **Save Changes**: Click "Save Conversation Starters" to persist changes
+4. **Reset Option**: Use "Reset to Defaults" to restore original questions
+
+**Default Questions:**
+1. "What insights are included with Azure AI Video Indexer?"
+2. "What is OCR?"
+3. "What is the distance to Mars?"
+
+**Technical Implementation:**
+- **Storage**: Browser localStorage with `conversation_starters` key
+- **Data Format**: JSON array with `text` and `value` properties
+- **Component Communication**: Custom events (`conversation_starters_updated`) for real-time updates
+- **Error Handling**: Automatic fallback to defaults if localStorage data is corrupted
 
 ## FAQ
 

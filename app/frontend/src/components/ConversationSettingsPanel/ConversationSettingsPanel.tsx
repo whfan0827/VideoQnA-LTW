@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { TextField, PrimaryButton, Dropdown, Separator, Stack, MessageBar, MessageBarType, IDropdownOption, DefaultButton } from "@fluentui/react";
-import styles from "./DeveloperSettingsPanel.module.css";
+import styles from "./ConversationSettingsPanel.module.css";
 
-interface DeveloperSettingsPanelProps {
+interface ConversationSettingsPanelProps {
     indexes: IDropdownOption[];
 }
 
@@ -27,7 +27,7 @@ const DEFAULT_CONVERSATION_STARTERS: ConversationStarter[] = [
     }
 ];
 
-export const DeveloperSettingsPanel = ({ indexes }: DeveloperSettingsPanelProps) => {
+export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanelProps) => {
     const [selectedIndex, setSelectedIndex] = useState(() => {
         return localStorage.getItem('target_library') || "";
     });
@@ -145,7 +145,7 @@ export const DeveloperSettingsPanel = ({ indexes }: DeveloperSettingsPanelProps)
     };
 
     return (
-        <div className={styles.developerSettingsPanel}>
+        <div className={styles.conversationSettingsPanel}>
             <div className={styles.panelHeader}>
                 <h3>Conversation Settings</h3>
                 <p>Configure conversation starters and basic settings</p>

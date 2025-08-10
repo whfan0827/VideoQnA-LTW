@@ -5,3 +5,7 @@
     cursor: pointer;
     color: #0078d4;
 }
+
+.container:hover {
+    color: #106ebe;
+}
