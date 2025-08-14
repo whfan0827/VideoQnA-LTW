@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { TextField, PrimaryButton, Dropdown, Separator, Stack, MessageBar, MessageBarType, IDropdownOption, DefaultButton } from "@fluentui/react";
+import { TextField, PrimaryButton, Dropdown, Separator, Stack, MessageBar, MessageBarType, IDropdownOption, DefaultButton, SpinButton } from "@fluentui/react";
 import styles from "./ConversationSettingsPanel.module.css";
 
 interface ConversationSettingsPanelProps {
@@ -32,6 +32,12 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
         return localStorage.getItem('target_library') || "";
     });
     const [message, setMessage] = useState<{ text: string; type: MessageBarType } | null>(null);
+    
+    // TopK setting state with localStorage initialization
+    const [topK, setTopK] = useState(() => {
+        const saved = localStorage.getItem('top_k');
+        return saved ? parseInt(saved, 10) : 3; // Default to 3
+    });
     
     // Conversation Starters state with localStorage initialization
     const [starter1, setStarter1] = useState(() => {
@@ -100,6 +106,11 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
             localStorage.removeItem('target_library');
         }
     }, [selectedIndex]);
+
+    // Persist topK changes
+    useEffect(() => {
+        localStorage.setItem('top_k', topK.toString());
+    }, [topK]);
 
 
     // Save target library to localStorage
@@ -177,6 +188,45 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                             saveTargetLibrary(libraryKey);
                         }}
                         styles={{ root: { marginTop: '8px' } }}
+                    />
+                </div>
+
+                <Separator />
+
+                {/* Top K Setting */}
+                <div className={styles.settingCard}>
+                    <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
+                        <h4>Top K Results</h4>
+                    </Stack>
+                    <p className={styles.description}>
+                        Number of most relevant search results to use for generating answers (1-10).
+                    </p>
+                    <SpinButton
+                        label="Top K"
+                        value={topK.toString()}
+                        onValidate={(value) => {
+                            const num = parseInt(value, 10);
+                            if (isNaN(num) || num < 1 || num > 10) {
+                                return "1";
+                            }
+                            return num.toString();
+                        }}
+                        onIncrement={(value) => {
+                            const current = parseInt(value, 10) || 1;
+                            const newValue = Math.min(current + 1, 10);
+                            setTopK(newValue);
+                            return newValue.toString();
+                        }}
+                        onDecrement={(value) => {
+                            const current = parseInt(value, 10) || 1;
+                            const newValue = Math.max(current - 1, 1);
+                            setTopK(newValue);
+                            return newValue.toString();
+                        }}
+                        min={1}
+                        max={10}
+                        step={1}
+                        styles={{ root: { marginTop: '8px', width: '120px' } }}
                     />
                 </div>
 

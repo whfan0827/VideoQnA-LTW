@@ -24,7 +24,10 @@ const OneShot = () => {
     const [promptTemplate] = useState<string>("");
     const [promptTemplatePrefix] = useState<string>("");
     const [promptTemplateSuffix] = useState<string>("");
-    const [retrieveCount] = useState<number>(3);
+    const [retrieveCount, setRetrieveCount] = useState<number>(() => {
+        const saved = localStorage.getItem('top_k');
+        return saved ? parseInt(saved, 10) : 3;
+    });
     const [useSemanticRanker] = useState<boolean>(true);
     const [index, setIndex] = useState<string>();
     const [useSemanticCaptions] = useState<boolean>(false);
@@ -66,6 +69,25 @@ const OneShot = () => {
         }
     }, [indexes]);
     
+    // Listen for top_k changes in localStorage
+    useEffect(() => {
+        const handleStorageChange = () => {
+            const saved = localStorage.getItem('top_k');
+            const newValue = saved ? parseInt(saved, 10) : 3;
+            setRetrieveCount(newValue);
+        };
+
+        // Listen for storage events (changes from other tabs)
+        window.addEventListener('storage', handleStorageChange);
+        
+        // Also check on mount and when focus returns to window
+        window.addEventListener('focus', handleStorageChange);
+        
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleStorageChange);
+        };
+    }, []);
     
     const refreshIndexes = async () => {
         const newIndexes = await indexesAPI();
