@@ -53,6 +53,7 @@ from vi_search.ask import RetrieveThenReadVectorApproach
 from vi_search.constants import DATA_DIR
 from services.settings_service import SettingsService
 from services.ai_template_service import AITemplateService, init_ai_templates_database
+from services.conversation_starters_service import conversation_starters_service
 from task_manager import task_manager
 from database.app_data_manager import db_manager
 from database.init_db import init_database
@@ -100,6 +101,11 @@ try:
     print("Database initialized successfully")
     init_ai_templates_database()
     print("AI templates database initialized successfully")
+    
+    # Initialize conversation starters
+    from database.migrate_conversation_starters import migrate_conversation_starters
+    migrate_conversation_starters()
+    print("Conversation starters database initialized successfully")
 except Exception as e:
     print(f"Database initialization error: {e}")
     # Continue anyway as the database might already exist
@@ -649,6 +655,52 @@ def get_templates_by_category():
     
     except Exception as e:
         logging.exception("Exception in get templates by category")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/libraries/<library_name>/conversation-starters", methods=["GET"])
+def get_library_conversation_starters(library_name):
+    """Get conversation starters for a specific library"""
+    try:
+        starters = conversation_starters_service.get_library_starters(library_name)
+        return jsonify({"starters": starters})
+    
+    except Exception as e:
+        logging.exception("Exception in get library conversation starters")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/libraries/<library_name>/conversation-starters", methods=["PUT"])
+def save_library_conversation_starters(library_name):
+    """Save conversation starters for a specific library"""
+    if not request.json or "starters" not in request.json:
+        return jsonify({"error": "Invalid request: 'starters' field required"}), 400
+    
+    try:
+        starters = request.json["starters"]
+        conversation_starters_service.save_library_starters(library_name, starters)
+        return jsonify({"message": "Conversation starters saved successfully"})
+    
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.exception("Exception in save library conversation starters")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/conversation-starters", methods=["GET"])
+def get_all_conversation_starters():
+    """Get conversation starters for all libraries"""
+    try:
+        all_starters = conversation_starters_service.get_all_libraries_starters()
+        defaults = conversation_starters_service.get_default_starters()
+        return jsonify({
+            "libraries": all_starters,
+            "defaults": defaults
+        })
+    
+    except Exception as e:
+        logging.exception("Exception in get all conversation starters")
         return jsonify({"error": str(e)}), 500
 
 

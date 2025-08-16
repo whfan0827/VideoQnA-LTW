@@ -20,13 +20,17 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(mv:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(PYTHONPATH=/c/PS/VideoQnA-LTW/app/backend python database/migrate_conversation_starters.py)",
+      "Bash(PYTHONPATH=/c/PS/VideoQnA-LTW/app/backend python test_conversation_starters.py)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
       "C:\\c\\PS\\VideoQnA-LTW\\app\\frontend\\public\\assets",
-      "C:\\c\\PS\\VideoQnA-LTW\\app\\frontend\\src"
+      "C:\\c\\PS\\VideoQnA-LTW\\app\\frontend\\src",
+      "C:\\mnt\\c\\PS\\VideoQnA-LTW\\app"
     ]
   }
 }

@@ -233,7 +233,7 @@ const OneShot = () => {
                         <ConversationSettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
                         <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
                     </div>
-                    <h1 className={styles.oneshotTitle}>Ask your video library</h1>
+                    <h1 className={styles.oneshotTitle}>Unlock insights from your video library</h1>
                     <h3 className={styles.oneshotSubTitle}>
                         <div>This is a platform of AI can find answers from your video library. </div>
                         <div>AI-generated content can have mistakes. Make sure it's accurate and appropriate before using it.</div>

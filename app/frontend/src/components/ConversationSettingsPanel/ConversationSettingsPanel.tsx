@@ -82,6 +82,70 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
         setTimeout(() => setMessage(null), 5000);
     };
 
+    // Load library-specific conversation starters
+    const loadLibraryConversationStarters = async (libraryId: string) => {
+        try {
+            // First try to load from cache
+            const cached = getLibraryStartersFromCache(libraryId);
+            if (cached) {
+                updateCurrentStarters(cached);
+                return;
+            }
+
+            // Load from API
+            const response = await fetch(`/api/libraries/${libraryId}/conversation-starters`);
+            if (response.ok) {
+                const data = await response.json();
+                const starters = data.starters || DEFAULT_CONVERSATION_STARTERS;
+                updateCurrentStarters(starters);
+                saveLibraryStartersToCache(libraryId, starters);
+            } else {
+                throw new Error('Failed to load library starters');
+            }
+        } catch (error) {
+            console.error('Error loading library conversation starters:', error);
+            // Fall back to defaults
+            updateCurrentStarters(DEFAULT_CONVERSATION_STARTERS);
+        }
+    };
+
+    // Load default conversation starters
+    const loadDefaultConversationStarters = () => {
+        updateCurrentStarters(DEFAULT_CONVERSATION_STARTERS);
+    };
+
+    // Update current conversation starters display
+    const updateCurrentStarters = (starters: ConversationStarter[]) => {
+        setStarter1(starters[0]?.text || DEFAULT_CONVERSATION_STARTERS[0].text);
+        setStarter2(starters[1]?.text || DEFAULT_CONVERSATION_STARTERS[1].text);
+        setStarter3(starters[2]?.text || DEFAULT_CONVERSATION_STARTERS[2].text);
+    };
+
+    // Cache management functions
+    const getLibraryStartersFromCache = (libraryId: string): ConversationStarter[] | null => {
+        try {
+            const cached = localStorage.getItem('library_conversation_starters');
+            if (cached) {
+                const libraryStarters = JSON.parse(cached);
+                return libraryStarters[libraryId] || null;
+            }
+        } catch (error) {
+            console.error('Error reading from cache:', error);
+        }
+        return null;
+    };
+
+    const saveLibraryStartersToCache = (libraryId: string, starters: ConversationStarter[]) => {
+        try {
+            const existingCache = localStorage.getItem('library_conversation_starters');
+            const libraryStarters = existingCache ? JSON.parse(existingCache) : {};
+            libraryStarters[libraryId] = starters;
+            localStorage.setItem('library_conversation_starters', JSON.stringify(libraryStarters));
+        } catch (error) {
+            console.error('Error saving to cache:', error);
+        }
+    };
+
     // Load initial data and validate on mount
     useEffect(() => {
         // Only validation needed as state is initialized from localStorage
@@ -98,12 +162,16 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
         }
     }, [indexes, selectedIndex]);
 
-    // Persist selectedIndex changes
+    // Persist selectedIndex changes and load library-specific starters
     useEffect(() => {
         if (selectedIndex) {
             localStorage.setItem('target_library', selectedIndex);
+            // Load conversation starters for the selected library
+            loadLibraryConversationStarters(selectedIndex);
         } else {
             localStorage.removeItem('target_library');
+            // Reset to default starters when no library is selected
+            loadDefaultConversationStarters();
         }
     }, [selectedIndex]);
 
@@ -127,7 +195,12 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
     };
 
 
-    const handleSaveConversationStarters = () => {
+    const handleSaveConversationStarters = async () => {
+        if (!selectedIndex) {
+            showMessage("Please select a library first", MessageBarType.warning);
+            return;
+        }
+
         try {
             const starters: ConversationStarter[] = [
                 { text: starter1, value: starter1 },
@@ -135,12 +208,32 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                 { text: starter3, value: starter3 }
             ].filter(s => s.text.trim() !== ""); // Filter out empty starters
 
+            // Save to backend API
+            const response = await fetch(`/api/libraries/${selectedIndex}/conversation-starters`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ starters })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save conversation starters');
+            }
+
+            // Update local cache
+            saveLibraryStartersToCache(selectedIndex, starters);
+            
+            // Also save to global localStorage for backward compatibility
             localStorage.setItem('conversation_starters', JSON.stringify(starters));
             
-            // Trigger event to notify ExampleList component
-            window.dispatchEvent(new CustomEvent('conversation_starters_updated'));
+            // Trigger events to notify other components
+            window.dispatchEvent(new CustomEvent('conversation_starters_updated', {
+                detail: { libraryId: selectedIndex }
+            }));
+            window.dispatchEvent(new CustomEvent('target_library_changed', {
+                detail: { libraryId: selectedIndex }
+            }));
             
-            showMessage("Conversation starters saved successfully!", MessageBarType.success);
+            showMessage(`Conversation starters saved for library "${selectedIndex}"`, MessageBarType.success);
         } catch (error) {
             showMessage(`Failed to save conversation starters: ${error}`, MessageBarType.error);
         }
@@ -236,28 +329,46 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                 <div className={styles.settingCard}>
                     <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
                         <h4>Conversation Starters</h4>
+                        {selectedIndex && (
+                            <span style={{ 
+                                fontSize: '12px', 
+                                color: '#0078d4', 
+                                backgroundColor: '#f0f6ff',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontWeight: 500
+                            }}>
+                                {selectedIndex}
+                            </span>
+                        )}
                     </Stack>
                     <p className={styles.description}>
-                        Configure the example questions shown to users when they start a conversation.
+                        {selectedIndex 
+                            ? `Configure conversation starters specifically for "${selectedIndex}". These will be shown when this library is selected.`
+                            : "Please select a library above to configure library-specific conversation starters."
+                        }
                     </p>
                     <Stack tokens={{ childrenGap: 12 }}>
                         <TextField
                             label="Starter 1"
                             value={starter1}
                             onChange={(_, value) => setStarter1(value || "")}
-                            placeholder="Enter first conversation starter..."
+                            placeholder={selectedIndex ? "Enter first conversation starter..." : "Select a library first"}
+                            disabled={!selectedIndex}
                         />
                         <TextField
                             label="Starter 2"
                             value={starter2}
                             onChange={(_, value) => setStarter2(value || "")}
-                            placeholder="Enter second conversation starter..."
+                            placeholder={selectedIndex ? "Enter second conversation starter..." : "Select a library first"}
+                            disabled={!selectedIndex}
                         />
                         <TextField
                             label="Starter 3"
                             value={starter3}
                             onChange={(_, value) => setStarter3(value || "")}
-                            placeholder="Enter third conversation starter..."
+                            placeholder={selectedIndex ? "Enter third conversation starter..." : "Select a library first"}
+                            disabled={!selectedIndex}
                         />
                     </Stack>
                     <Stack horizontal tokens={{ childrenGap: 12 }} styles={{ root: { marginTop: '16px' } }}>
@@ -265,11 +376,13 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                             text="Save"
                             onClick={handleSaveConversationStarters}
                             iconProps={{ iconName: "Save" }}
+                            disabled={!selectedIndex}
                         />
                         <DefaultButton
                             text="Reset"
                             onClick={handleResetConversationStarters}
                             iconProps={{ iconName: "Refresh" }}
+                            disabled={!selectedIndex}
                         />
                     </Stack>
                 </div>
