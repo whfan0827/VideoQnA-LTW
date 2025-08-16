@@ -1,0 +1,21 @@
+# Production requirements - includes base requirements + production dependencies
+
+# Include base requirements
+-r requirements.txt
+
+# Production WSGI server
+gunicorn>=21.2.0
+
+# Security and monitoring
+flask-talisman>=1.1.0  # Security headers
+flask-cors>=4.0.0      # CORS handling
+
+# Performance monitoring (optional)
+# newrelic>=9.0.0
+# sentry-sdk[flask]>=1.38.0
+
+# Health checks
+redis>=5.0.0           # For rate limiting backend (optional)
+
+# Environment management
+python-decouple>=3.8   # Better than python-dotenv for production

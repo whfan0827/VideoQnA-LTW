@@ -92,7 +92,7 @@ const AIParameterPanel: React.FC<AIParameterPanelProps> = ({
             <PivotItem
               headerText="Quick Setup"
               itemKey="quickSetup"
-              itemIcon="Lightning"
+              itemIcon="lightning"
             />
             <PivotItem
               headerText="Parameter Adjustment"

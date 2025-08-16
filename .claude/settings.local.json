@@ -11,9 +11,22 @@
       "Bash(find:*)",
       "Bash(true)",
       "Bash(npm run dev:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "Bash(cp:*)",
+      "Bash(copy:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm uninstall:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(mv:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
-    "defaultMode": "acceptEdits"
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\c\\PS\\VideoQnA-LTW\\app\\frontend\\public\\assets",
+      "C:\\c\\PS\\VideoQnA-LTW\\app\\frontend\\src"
+    ]
   }
 }

@@ -12,6 +12,7 @@ import {
   DetailsList,
   IColumn,
   SelectionMode,
+  Selection,
   CommandBar,
   ICommandBarItemProps,
   Dialog,
@@ -68,6 +69,18 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
     copyFromTemplate: '',
   });
 
+  // Create Selection object for DetailsList
+  const [selection] = useState(() => new Selection({
+    onSelectionChanged: () => {
+      const selectedItems = selection.getSelection() as AITemplate[];
+      if (selectedItems.length > 0) {
+        setSelectedTemplate(selectedItems[0]);
+      } else {
+        setSelectedTemplate(null);
+      }
+    },
+  }));
+
   // Persist selected template ID
   useEffect(() => {
     if (selectedTemplate) {
@@ -82,13 +95,14 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
     if (templates.length > 0) {
       const savedTemplateName = localStorage.getItem('templateManagement_selectedTemplateName');
       if (savedTemplateName) {
-        const template = templates.find(t => t.templateName === savedTemplateName);
-        if (template) {
-          setSelectedTemplate(template);
+        const templateIndex = templates.findIndex(t => t.templateName === savedTemplateName);
+        if (templateIndex >= 0) {
+          selection.setIndexSelected(templateIndex, true, false);
+          setSelectedTemplate(templates[templateIndex]);
         }
       }
     }
-  }, [templates]);
+  }, [templates, selection]);
 
   useEffect(() => {
     loadTemplates();
@@ -156,10 +170,6 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
         displayName: newTemplateForm.displayName,
         description: newTemplateForm.description,
         category: newTemplateForm.category,
-        promptTemplate: "You are a helpful AI assistant. Answer questions based on the provided video content.",
-        temperature: 0.7,
-        maxTokens: 800,
-        semanticRanker: true,
         copyFromTemplate: newTemplateForm.copyFromTemplate || null,
       };
       
@@ -211,6 +221,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
     try {
       setIsLoading(true);
       const payload = {
+        templateName: `${template.templateName}-copy-${Date.now()}`,
         displayName: `${template.displayName} (Copy)`,
         description: `Copy of ${template.description}`,
         category: template.category,
@@ -419,14 +430,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({
           items={templates}
           columns={templateColumns}
           selectionMode={SelectionMode.single}
+          selection={selection}
           setKey="templates"
           styles={{
             root: { minHeight: '300px' },
             headerWrapper: { '& [role=row]': { backgroundColor: '#f8f9fa' } },
-          }}
-          onItemInvoked={(item: AITemplate) => {
-            setSelectedTemplate(item);
-            onMessage(`Template "${item.displayName}" selected`, MessageBarType.info);
           }}
         />
 

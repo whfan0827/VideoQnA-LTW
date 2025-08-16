@@ -39,9 +39,11 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
     const [error, setError] = useState<string | null>(null);
     const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [selectedCount, setSelectedCount] = useState(0);
     const [selection] = useState(new Selection({
         onSelectionChanged: () => {
-            // Handle selection changes if needed
+            // Force component re-render by updating selection count
+            setSelectedCount(selection.getSelectedCount());
         },
     }));
 
@@ -59,6 +61,9 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             if (response.ok) {
                 const data = await response.json();
                 setVideos(data.videos || []);
+                // Clear selection when data is reloaded
+                selection.setAllSelected(false);
+                setSelectedCount(0);
             } else {
                 const errorData = await response.json();
                 setError(errorData.error || 'Failed to load videos');
@@ -178,6 +183,7 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             
             // Clear selection
             selection.setAllSelected(false);
+            setSelectedCount(0);
             
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete videos');
@@ -197,9 +203,9 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
         },
         {
             key: 'delete',
-            text: 'Delete Selected',
+            text: `Delete Selected${selectedCount > 0 ? ` (${selectedCount})` : ''}`,
             iconProps: { iconName: 'Delete' },
-            disabled: getSelectedItems().length === 0 || deleting,
+            disabled: selectedCount === 0 || deleting,
             onClick: () => setDeleteDialogVisible(true)
         }
     ];
@@ -254,7 +260,7 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
                 dialogContentProps={{
                     type: DialogType.normal,
                     title: 'Confirm Deletion',
-                    subText: `Are you sure you want to delete ${getSelectedItems().length} video(s)? This action cannot be undone.`
+                    subText: `Are you sure you want to delete ${selectedCount} video(s)? This action cannot be undone.`
                 }}
                 modalProps={{
                     isBlocking: true,

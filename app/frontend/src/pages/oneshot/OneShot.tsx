@@ -215,63 +215,73 @@ const OneShot = () => {
         }
     };
 
+    // Check if any panel is open for accessibility management
+    const isAnyPanelOpen = isConfigPanelOpen || isLibraryPanelOpen || isAIParameterPanelOpen;
+
     return (
         <div className={styles.oneshotContainer}>
-            <div className={styles.oneshotTopSection}>
-                <div className={styles.commandsContainer}>
-                    <AIParameterButton className={styles.commandButton} onClick={() => setIsAIParameterPanelOpen(true)} />
-                    <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
-                    <ConversationSettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
-                    <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
-                </div>
-                <h1 className={styles.oneshotTitle}>Ask your video library</h1>
-                <h3 className={styles.oneshotSubTitle}>
-                    <div>This is a platform of AI can find answers from your video library. </div>
-                    <div>AI-generated content can have mistakes. Make sure it’s accurate and appropriate before using it.</div>
-                </h3>
-                <div className={styles.oneshotQuestionInput}>
-                    <QuestionInput
-                        question={question}
-                        placeholder="Tips: Go to Conversation Settings to pick up a Target Library first."
-                        disabled={isAskLoading || isLoading}
-                        onSend={question => makeApiRequest(question)}
-                    />
-                </div>
-            </div>
-            {!isLoading ? (
-                <div className={styles.oneshotBottomSection}>
-                    {isAskLoading && <Spinner label="Generating answer" />}
-                    {!lastQuestionRef.current && <ExampleList onExampleClicked={onExampleClicked} />}
-                    {!isAskLoading && answer && !error && (
-                        <div className={styles.oneshotAnswerContainer}>
-                            <Answer
-                                answer={answer}
-                                onCitationClicked={(x, docId) => onShowCitation(x, docId)}
-                                onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
-                                onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
-                            />
-                        </div>
-                    )}
-                    {error ? (
-                        <div className={styles.oneshotAnswerContainer}>
-                            <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
-                        </div>
-                    ) : null}
-                    {activeAnalysisPanelTab && answer && (
-                        <AnalysisPanel
-                            className={styles.oneshotAnalysisPanel}
-                            activeCitation={activeCitation}
-                            activeScene={activeScene}
-                            onActiveTabChanged={x => onToggleTab(x)}
-                            citationHeight="100%"
-                            answer={answer}
-                            activeTab={activeAnalysisPanelTab}
+            {/* Main content that should be hidden from screen readers when panels are open */}
+            <div 
+                className={styles.oneshotMainContent}
+                aria-hidden={isAnyPanelOpen ? 'true' : undefined}
+                inert={isAnyPanelOpen ? '' : undefined}
+            >
+                <div className={styles.oneshotTopSection}>
+                    <div className={styles.commandsContainer}>
+                        <AIParameterButton className={styles.commandButton} onClick={() => setIsAIParameterPanelOpen(true)} />
+                        <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
+                        <ConversationSettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
+                        <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
+                    </div>
+                    <h1 className={styles.oneshotTitle}>Ask your video library</h1>
+                    <h3 className={styles.oneshotSubTitle}>
+                        <div>This is a platform of AI can find answers from your video library. </div>
+                        <div>AI-generated content can have mistakes. Make sure it's accurate and appropriate before using it.</div>
+                    </h3>
+                    <div className={styles.oneshotQuestionInput}>
+                        <QuestionInput
+                            question={question}
+                            placeholder="Tips: Go to Conversation Settings to pick up a Target Library first."
+                            disabled={isAskLoading || isLoading}
+                            onSend={question => makeApiRequest(question)}
                         />
-                    )}
+                    </div>
                 </div>
-            ) : (
-                <Spinner className={styles.loadingIndexes} label="Loading" />
-            )}
+                {!isLoading ? (
+                    <div className={styles.oneshotBottomSection}>
+                        {isAskLoading && <Spinner label="Generating answer" />}
+                        {!lastQuestionRef.current && <ExampleList onExampleClicked={onExampleClicked} />}
+                        {!isAskLoading && answer && !error && (
+                            <div className={styles.oneshotAnswerContainer}>
+                                <Answer
+                                    answer={answer}
+                                    onCitationClicked={(x, docId) => onShowCitation(x, docId)}
+                                    onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
+                                    onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
+                                />
+                            </div>
+                        )}
+                        {error ? (
+                            <div className={styles.oneshotAnswerContainer}>
+                                <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
+                            </div>
+                        ) : null}
+                        {activeAnalysisPanelTab && answer && (
+                            <AnalysisPanel
+                                className={styles.oneshotAnalysisPanel}
+                                activeCitation={activeCitation}
+                                activeScene={activeScene}
+                                onActiveTabChanged={x => onToggleTab(x)}
+                                citationHeight="100%"
+                                answer={answer}
+                                activeTab={activeAnalysisPanelTab}
+                            />
+                        )}
+                    </div>
+                ) : (
+                    <Spinner className={styles.loadingIndexes} label="Loading" />
+                )}
+            </div>
             <Panel
                 headerText="Conversation Settings"
                 isOpen={isConfigPanelOpen}
@@ -282,6 +292,9 @@ const OneShot = () => {
                 isFooterAtBottom={true}
                 type={PanelType.custom}
                 customWidth="40%"
+                layerProps={{
+                    eventBubblingEnabled: false
+                }}
             >
                 <div className={styles.configSection}>
                     <ConversationSettingsPanel indexes={indexes} />
@@ -298,6 +311,9 @@ const OneShot = () => {
                 isFooterAtBottom={true}
                 type={PanelType.custom}
                 customWidth="80%"
+                layerProps={{
+                    eventBubblingEnabled: false
+                }}
             >
                 <div className={styles.configSection}>
                     <LibraryManagementPanel 
@@ -317,6 +333,9 @@ const OneShot = () => {
                 isFooterAtBottom={true}
                 type={PanelType.custom}
                 customWidth="80%"
+                layerProps={{
+                    eventBubblingEnabled: false
+                }}
             >
                 <div className={styles.configSection}>
                     <AIParameterPanel 

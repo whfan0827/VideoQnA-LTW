@@ -58,16 +58,30 @@ class AITemplateService:
     
     def create_template(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new AI template"""
-        # Validate template data
+        # Check if we need to copy from an existing template
+        copy_from_template = template_data.get('copyFromTemplate')
+        base_template = None
+        
+        if copy_from_template:
+            base_template = self.get_template(copy_from_template)
+            if not base_template:
+                raise ValueError(f"Template to copy from '{copy_from_template}' not found")
+        
+        # Use base template values or defaults
         template = AITemplate(
             template_name=template_data['templateName'],
             display_name=template_data['displayName'],
             description=template_data.get('description'),
             category=template_data.get('category', 'Custom'),
-            prompt_template=template_data['promptTemplate'],
-            temperature=template_data.get('temperature', 0.7),
-            max_tokens=template_data.get('maxTokens', 800),
-            semantic_ranker=template_data.get('semanticRanker', True),
+            prompt_template=template_data.get('promptTemplate', 
+                base_template['promptTemplate'] if base_template else 
+                "You are a helpful AI assistant. Answer questions based on the provided video content."),
+            temperature=template_data.get('temperature', 
+                base_template['temperature'] if base_template else 0.7),
+            max_tokens=template_data.get('maxTokens', 
+                base_template['maxTokens'] if base_template else 800),
+            semantic_ranker=template_data.get('semanticRanker', 
+                base_template['semanticRanker'] if base_template else True),
             is_system_default=False,  # User templates are never system defaults
             created_by=template_data.get('createdBy', 'User')
         )

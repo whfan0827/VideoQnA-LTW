@@ -9,6 +9,15 @@ from datetime import datetime
 
 from flask import Flask, request, jsonify
 
+# Import security configuration
+try:
+    from security import configure_security, configure_logging_security
+    configure_logging_security()
+except ImportError:
+    # Security module not available in development
+    def configure_security(app):
+        return app
+
 # Setup logging system
 log_dir = Path(__file__).parent / "logs"
 log_dir.mkdir(exist_ok=True)
@@ -81,6 +90,9 @@ settings_service = SettingsService()
 ai_template_service = AITemplateService()
 
 app = Flask(__name__)
+
+# Apply security configuration
+app = configure_security(app)
 
 # Initialize database on startup
 try:
@@ -739,12 +751,22 @@ if __name__ == "__main__":
     # Check if running in container environment
     is_docker = os.path.exists('/.dockerenv')
     is_development = os.environ.get('FLASK_ENV') == 'development'
+    is_production = os.environ.get('FLASK_ENV') == 'production'
     
-    if is_docker:
+    if is_production:
+        # Production environment should use Gunicorn
+        logger.warning("Running in production mode with Flask dev server. Use Gunicorn instead: gunicorn -c gunicorn.conf.py app:app")
+        app.run(
+            host='0.0.0.0',
+            port=int(os.environ.get('PORT', 5000)),
+            debug=False,     # Never enable debug in production
+            threaded=True
+        )
+    elif is_docker:
         # Docker environment configuration
         app.run(
             host='0.0.0.0',  # Must bind to 0.0.0.0 in container
-            port=5000,
+            port=int(os.environ.get('PORT', 5000)),
             debug=is_development,
             threaded=True
         )
@@ -752,7 +774,7 @@ if __name__ == "__main__":
         # Local development configuration
         app.run(
             host='0.0.0.0',  # Allow external connections
-            port=5000,
+            port=int(os.environ.get('PORT', 5000)),
             debug=True,      # Enable debug mode
             threaded=True    # Enable multi-threading
         )

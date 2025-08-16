@@ -6,6 +6,14 @@
     position: relative;
 }
 
+.oneshotMainContent {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
 .oneshotTopSection {
     display: flex;
     flex-direction: column;

@@ -16,6 +16,7 @@ import styles from "./LibraryManagementPanel.module.css";
 import { useTaskManager } from "../../hooks/useTaskManager";
 import { TaskProgressCard } from "../TaskProgressCard";
 import VideoList from "../VideoList/VideoList";
+import { LibraryList } from "../LibraryList";
 
 interface LibraryManagementPanelProps {
     indexes: IDropdownOption[];
@@ -27,9 +28,6 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         return localStorage.getItem('libraryManagement_activeTab') || "upload";
     });
     const [newLibraryName, setNewLibraryName] = useState("");
-    const [selectedLibraryToDelete, setSelectedLibraryToDelete] = useState(() => {
-        return localStorage.getItem('libraryManagement_selectedLibraryToDelete') || "";
-    });
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [selectedUploadLibrary, setSelectedUploadLibrary] = useState(() => {
         return localStorage.getItem('libraryManagement_selectedUploadLibrary') || "";
@@ -61,13 +59,6 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         localStorage.setItem('libraryManagement_activeTab', activeTab);
     }, [activeTab]);
 
-    useEffect(() => {
-        if (selectedLibraryToDelete) {
-            localStorage.setItem('libraryManagement_selectedLibraryToDelete', selectedLibraryToDelete);
-        } else {
-            localStorage.removeItem('libraryManagement_selectedLibraryToDelete');
-        }
-    }, [selectedLibraryToDelete]);
 
     useEffect(() => {
         if (selectedUploadLibrary) {
@@ -123,33 +114,6 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         }
     };
 
-    // Delete Library
-    const handleDeleteLibrary = async () => {
-        if (!selectedLibraryToDelete) return;
-        
-        if (!confirm(`Are you sure you want to delete "${selectedLibraryToDelete}"? This action cannot be undone.`)) {
-            return;
-        }
-
-        setIsProcessing(true);
-        try {
-            const response = await fetch(`/libraries/${selectedLibraryToDelete}`, {
-                method: "DELETE"
-            });
-            
-            if (!response.ok) {
-                throw new Error("Failed to delete library");
-            }
-            
-            setSelectedLibraryToDelete("");
-            onLibrariesChanged();
-            showMessage(`Library "${selectedLibraryToDelete}" deleted successfully!`, MessageBarType.success);
-        } catch (error) {
-            showMessage(`Failed to delete library: ${error}`, MessageBarType.error);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
 
     // Upload Videos - Now supports both file and URL upload
     const handleUploadVideos = async () => {
@@ -591,7 +555,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                         <div className={styles.actionCard}>
                             <h4>System Logs and Task History</h4>
                             <Stack tokens={{ childrenGap: 12 }}>
-                                <Stack horizontal tokens={{ childrenGap: 12 }}>
+                                <Stack horizontal tokens={{ childrenGap: 12 }} verticalAlign="end">
                                     <Dropdown
                                         label="Log Type"
                                         options={[
@@ -600,7 +564,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                         ]}
                                         selectedKey={logFilter.type}
                                         onChange={(_, item) => setLogFilter({...logFilter, type: item?.key as string})}
-                                        styles={{ root: { minWidth: 120 } }}
+                                        styles={{ root: { width: 150 } }}
                                     />
                                     
                                     {logFilter.type === 'app' ? (
@@ -609,7 +573,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                             type="number"
                                             value={logFilter.lines.toString()}
                                             onChange={(_, value) => setLogFilter({...logFilter, lines: parseInt(value || '100')})}
-                                            styles={{ root: { width: 100 } }}
+                                            styles={{ root: { width: 120 } }}
                                         />
                                     ) : (
                                         <>
@@ -632,7 +596,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                                 ]}
                                                 selectedKey={logFilter.statusFilter}
                                                 onChange={(_, item) => setLogFilter({...logFilter, statusFilter: item?.key as string})}
-                                                styles={{ root: { minWidth: 120 } }}
+                                                styles={{ root: { width: 130 } }}
                                             />
                                         </>
                                     )}
@@ -642,6 +606,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                         onClick={logFilter.type === 'app' ? fetchLogs : fetchTasksHistory}
                                         disabled={logsLoading}
                                         iconProps={{ iconName: logsLoading ? "Clock" : "Refresh" }}
+                                        styles={{ root: { minWidth: 120 } }}
                                     />
                                 </Stack>
                             </Stack>
@@ -734,63 +699,19 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
 
             {activeTab === "settings" && (
                 <div className={styles.tabContent}>
-                    <Stack tokens={{ childrenGap: 20 }}>
-                        {/* Delete Library Section */}
-                        <div className={styles.actionCard}>
-                            <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
-                                <h4>Delete Library</h4>
-                            </Stack>
-                            <Stack tokens={{ childrenGap: 12 }}>
-                                <Dropdown
-                                    placeholder="Choose library to delete"
-                                    options={indexes}
-                                    selectedKey={selectedLibraryToDelete}
-                                    onChange={(_, item) => setSelectedLibraryToDelete(item?.key as string || "")}
-                                    disabled={isProcessing}
-                                />
-                                <DefaultButton
-                                    text="Delete Library"
-                                    onClick={handleDeleteLibrary}
-                                    disabled={!selectedLibraryToDelete || isProcessing}
-                                    iconProps={{ iconName: "Delete" }}
-                                    styles={{ 
-                                        root: { 
-                                            borderColor: '#d13438',
-                                            color: '#d13438'
-                                        },
-                                        rootHovered: {
-                                            backgroundColor: '#d13438',
-                                            color: 'white'
-                                        }
-                                    }}
-                                />
-                            </Stack>
-                        </div>
-
-                        <Separator />
-
-                        {/* Current Libraries Overview */}
-                        <div className={styles.actionCard}>
-                            <h4>Current Libraries ({indexes.length})</h4>
-                            <div className={styles.librariesGrid}>
-                                {indexes.length === 0 ? (
-                                    <div className={styles.emptyState}>
-                                        <p>No libraries found. Create your first library above!</p>
-                                    </div>
-                                ) : (
-                                    indexes.map(lib => (
-                                        <div key={lib.key} className={styles.libraryCard}>
-                                            <div className={styles.libraryIcon}>Library</div>
-                                            <div className={styles.libraryInfo}>
-                                                <strong title={lib.text}>{lib.text}</strong>
-                                                <small title={lib.key as string}>{lib.key}</small>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </Stack>
+                    <div className={styles.actionCard}>
+                        <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
+                            <h4>Library Management ({indexes.length})</h4>
+                        </Stack>
+                        <p style={{ color: '#605e5c', marginBottom: 16 }}>
+                            Manage your video libraries. Select libraries using checkboxes to perform batch operations.
+                        </p>
+                        <LibraryList 
+                            libraries={indexes}
+                            onLibrariesChanged={onLibrariesChanged}
+                            isProcessing={isProcessing}
+                        />
+                    </div>
                 </div>
             )}
         </div>
