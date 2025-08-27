@@ -168,6 +168,9 @@ class VideoDatabase:
     def save_video_record(self, video_data: Dict[str, Any]) -> bool:
         """Save a video record to the database."""
         try:
+            from datetime import datetime
+            current_time = datetime.now().isoformat()
+            
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO video_index 
@@ -183,8 +186,8 @@ class VideoDatabase:
                     video_data.get('status', 'indexed'),
                     video_data.get('file_size'),
                     video_data.get('duration'),
-                    video_data.get('created_at'),
-                    video_data.get('indexed_at'),
+                    video_data.get('created_at', current_time),  # 確保always有created_at
+                    video_data.get('indexed_at', current_time),  # 確保always有indexed_at
                     json.dumps(video_data.get('metadata', {}))
                 ))
                 conn.commit()

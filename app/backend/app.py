@@ -2,10 +2,21 @@ import logging
 import os
 import re
 import uuid
+import sys
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from datetime import datetime
+
+# Fix Windows encoding issues
+if sys.platform == "win32":
+    # Set environment variables for subprocess calls
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    # Reconfigure stdout/stderr for proper encoding
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
 
 from flask import Flask, request, jsonify
 
@@ -31,7 +42,7 @@ logging.basicConfig(
             log_dir / f"app_{datetime.now().strftime('%Y%m%d')}.log",
             encoding='utf-8'
         ),
-        logging.StreamHandler()  # Also output to console
+        logging.StreamHandler()
     ]
 )
 
@@ -90,7 +101,7 @@ settings_service = SettingsService()
 # Initialize AI template service
 ai_template_service = AITemplateService()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/')
 
 # Apply security configuration
 app = configure_security(app)

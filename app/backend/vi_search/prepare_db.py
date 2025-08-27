@@ -1,9 +1,20 @@
 import os
 import json
+import sys
 from pprint import pprint
 from pathlib import Path
 import time
 from typing import Optional
+
+# Fix Windows encoding issues
+if sys.platform == "win32":
+    # Set environment variables for subprocess calls
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    # Reconfigure stdout/stderr for proper encoding
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
 
 from dotenv import dotenv_values
 

@@ -29,8 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 複製後端代碼
 COPY app/backend/ ./
 
-# 將構建的前端文件複製到靜態目錄
-RUN mkdir -p static && cp -r /app/frontend/dist/* static/
+# 前端建置已直接輸出到 ../backend/static，無需額外複製
 
 # 設置環境變數
 ENV PYTHONPATH=/app

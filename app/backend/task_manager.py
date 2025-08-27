@@ -466,15 +466,86 @@ class TaskManager:
         if task.file_path and Path(task.file_path).exists():
             cached_info = file_cache.get_cached_video_info(Path(task.file_path))
             if cached_info:
-                self.update_task_progress(task_id, 95, f"Duplicate detected - using cached video_id {cached_info['video_id']}")
+                self.update_task_progress(task_id, 50, f"Duplicate detected - using cached video_id {cached_info['video_id']}")
                 logger.info(f"Skipping duplicate file upload for {task.filename} - using cached video_id {cached_info['video_id']}")
-                # Skip to completion since it's already processed
-                task.status = TaskStatus.COMPLETED
-                task.progress = 100
-                task.current_step = f"Skipped duplicate - video already indexed as {cached_info['video_id']}"
-                task.completed_at = datetime.now()
-                self._save_task_to_db(task)
-                return
+                
+                # Still need to process the video to add it to the target library
+                # Use the cached video_id to quickly generate vectors and add to database
+                try:
+                    # Import dependencies for cached processing
+                    search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
+                    
+                    if search_db == "chromadb":
+                        from vi_search.prompt_content_db.chroma_db import ChromaDB
+                        prompt_content_db = ChromaDB()
+                    elif search_db == "azure_search":
+                        from vi_search.prompt_content_db.azure_search import AzureVectorSearch
+                        prompt_content_db = AzureVectorSearch()
+                    else:
+                        raise ValueError(f"Unknown search_db: {search_db}")
+
+                    lang_model = os.environ.get("LANGUAGE_MODEL", "openai")
+                    if lang_model == "openai":
+                        from vi_search.language_models.azure_openai import OpenAI
+                        language_models = OpenAI()
+                    elif lang_model == "dummy":
+                        from vi_search.language_models.dummy_lm import DummyLanguageModels
+                        language_models = DummyLanguageModels()
+                    else:
+                        raise ValueError(f"Unknown language model: {lang_model}")
+
+                    self.update_task_progress(task_id, 70, "Processing cached video for target library...")
+                    
+                    # Process the cached video with the target library
+                    from vi_search.prepare_db import prepare_db_with_progress
+                    from vi_search.constants import DATA_DIR
+                    
+                    def progress_callback(step: str, progress: int):
+                        if task.status == TaskStatus.CANCELLED:
+                            raise Exception("Task was cancelled")
+                        # Scale progress from 70-95
+                        scaled_progress = 70 + int((progress / 100) * 25)
+                        self.update_task_progress(task_id, scaled_progress, step)
+                    
+                    prepare_db_with_progress(
+                        db_name=task.library_name,
+                        data_dir=DATA_DIR,
+                        language_models=language_models,
+                        prompt_content_db=prompt_content_db,
+                        single_video_file=task.file_path,
+                        progress_callback=progress_callback,
+                        verbose=True,
+                        use_videos_ids_cache=True  # Use cache for fast processing
+                    )
+                    
+                    # Save video record to target library database
+                    file_size = 0
+                    if task.file_path and Path(task.file_path).exists():
+                        file_size = Path(task.file_path).stat().st_size
+                        
+                    video_data = {
+                        'filename': task.filename,
+                        'original_path': task.file_path,
+                        'library_name': task.library_name,
+                        'video_id': cached_info['video_id'],
+                        'status': 'indexed',
+                        'file_size': file_size,
+                    }
+                    
+                    db_manager.save_video_record(video_data)
+                    logger.info(f"Video record saved for {task.filename} in library {task.library_name}")
+                    
+                    # Mark as completed
+                    task.status = TaskStatus.COMPLETED
+                    task.progress = 100
+                    task.current_step = f"Duplicate processed - video indexed as {cached_info['video_id']} in {task.library_name}"
+                    task.completed_at = datetime.now()
+                    self._save_task_to_db(task)
+                    return
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process cached video: {e}")
+                    # Fall through to normal processing if cached processing fails
 
         # Process video with progress callbacks
         def progress_callback(step: str, progress: int):
@@ -630,17 +701,23 @@ class TaskManager:
         try:
             # Import vector database components directly
             try:
-                from vi_search.prompt_content_db.chroma_db import ChromaDB
-                from vi_search.prompt_content_db.azure_search import AzureVectorSearch
                 import os
+                from dotenv import load_dotenv
                 
-                # Try to determine which vector db to use
-                # For now, try ChromaDB first
-                chroma_path = os.path.join(os.path.dirname(__file__), 'vi_search', '.chroma')
-                if os.path.exists(chroma_path):
+                # Load environment variables
+                load_dotenv()
+                search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
+                
+                if search_db == "chromadb":
+                    from vi_search.prompt_content_db.chroma_db import ChromaDB
                     prompt_content_db = ChromaDB()
-                else:
+                    logger.info("Initialized ChromaDB for video deletion")
+                elif search_db == "azure_search":
+                    from vi_search.prompt_content_db.azure_search import AzureVectorSearch
                     prompt_content_db = AzureVectorSearch()
+                    logger.info("Initialized Azure Search for video deletion")
+                else:
+                    raise ValueError(f"Unknown search_db: {search_db}")
                     
             except Exception as e:
                 logger.error(f"Failed to initialize vector database: {e}")
@@ -707,15 +784,30 @@ class TaskManager:
         self.update_task_progress(task_id, 5, f"Starting batch deletion of {total_videos} videos...")
         
         try:
-            # Import app components
-            import sys
-            if 'app' in sys.modules:
-                app_module = sys.modules['app']
-                prompt_content_db = getattr(app_module, 'prompt_content_db', None)
-                if not prompt_content_db:
-                    raise ImportError("Cannot access prompt_content_db from app module")
-            else:
-                raise ImportError("App module not loaded")
+            # Import vector database components directly (same as single video delete)
+            try:
+                import os
+                from dotenv import load_dotenv
+                
+                # Load environment variables
+                load_dotenv()
+                search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
+                
+                if search_db == "chromadb":
+                    from vi_search.prompt_content_db.chroma_db import ChromaDB
+                    prompt_content_db = ChromaDB()
+                    logger.info("Initialized ChromaDB for batch video deletion")
+                elif search_db == "azure_search":
+                    from vi_search.prompt_content_db.azure_search import AzureVectorSearch
+                    prompt_content_db = AzureVectorSearch()
+                    logger.info("Initialized Azure Search for batch video deletion")
+                else:
+                    raise ValueError(f"Unknown search_db: {search_db}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize vector database: {e}")
+                # If vector database fails, continue without it
+                prompt_content_db = None
             
             deleted_count = 0
             failed_videos = []
@@ -729,16 +821,20 @@ class TaskManager:
                     self.update_task_progress(task_id, progress, f"Deleting {video_id}...")
                     
                     # Remove from vector database
-                    try:
-                        # Set the database to the correct library
-                        prompt_content_db.set_db(task.library_name)
-                        success = prompt_content_db.delete_video_documents(video_id)
-                        if success:
-                            logger.info(f"Successfully removed vector documents for {video_id}")
-                        else:
-                            logger.warning(f"No vector documents found for {video_id}")
-                    except Exception as e:
-                        logger.warning(f"Failed to remove vector documents for {video_id}: {e}")
+                    if prompt_content_db is not None:
+                        try:
+                            # Set the database to the correct library
+                            prompt_content_db.set_db(task.library_name)
+                            success = prompt_content_db.delete_video_documents(video_id)
+                            if success:
+                                logger.info(f"Successfully removed vector documents for {video_id}")
+                            else:
+                                logger.warning(f"No vector documents found for {video_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to remove vector documents for {video_id}: {e}")
+                            # Don't fail the entire task if vector deletion fails
+                    else:
+                        logger.warning(f"Vector database not available, skipping vector deletion for {video_id}")
                     
                     # Physically delete in database
                     library_variants = [

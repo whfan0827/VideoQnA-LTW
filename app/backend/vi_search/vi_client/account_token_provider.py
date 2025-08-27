@@ -127,8 +127,8 @@ def get_account_access_token_async(consts, arm_access_token, permission_type='Co
     # Use shared session to reduce connection overhead
     session = GlobalSessionManager.get_session()
     
-    # Simple retry for connection errors only (like original code)
-    max_attempts = 2
+    # Enhanced retry for connection errors (increased for network instability)
+    max_attempts = 5
     for attempt in range(max_attempts):
         try:
             if attempt > 0:
@@ -158,7 +158,7 @@ def get_account_access_token_async(consts, arm_access_token, permission_type='Co
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             if "10054" in str(e) or "ConnectionResetError" in str(e):
                 if attempt < max_attempts - 1:
-                    wait_time = 3  # Fixed wait time for connection resets
+                    wait_time = min(5 * (attempt + 1), 15)  # Progressive backoff: 5s, 10s, 15s, 15s
                     print(f"Connection reset detected, waiting {wait_time}s before retry...")
                     time.sleep(wait_time)
                     continue

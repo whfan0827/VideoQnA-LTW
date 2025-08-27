@@ -14,5 +14,45 @@
     "file_size": 74601509,
     "cached_at": 1754756848.194123,
     "cached_at_readable": "2025-08-10 00:27:28"
+  },
+  "08c691042527e8aa4e273b6238f278f3": {
+    "video_id": "5lc8tokc9c",
+    "library_name": "vi-machine-instruction-index",
+    "filename": "I-INV-001_Instruction_of_YASKAWA_GA700_Auto_Tuning_for_Chinony_Motor.mp4",
+    "file_size": 310052705,
+    "cached_at": 1756218579.0634537,
+    "cached_at_readable": "2025-08-26 22:29:39",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "6f465d6ce5ea95c24fe0e5efb753f537": {
+    "video_id": "c6m1hlxq04",
+    "library_name": "vi-machine-instruction-index",
+    "filename": "I-MTR-001_Instruction_of_Encoder_C50H-600ZCU_Replacement.mp4",
+    "file_size": 156809533,
+    "cached_at": 1756219531.3384573,
+    "cached_at_readable": "2025-08-26 22:45:31",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "dc6e38947be13ef0a1a101ce83475e47": {
+    "video_id": "shhwd48ru7",
+    "library_name": "vi-machine-instruction-index",
+    "filename": "96f9aee8f3a3.mp4",
+    "file_size": 21648162,
+    "cached_at": 1756220284.2827742,
+    "cached_at_readable": "2025-08-26 22:58:04",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "a14332646e33ac3c1a18c4f5c965094d": {
+    "video_id": "ewgrkjm7l4",
+    "library_name": "vi-azure-ai-intro-index",
+    "filename": "Azure_Video_Indexer_Intro_and_Demo.mp4",
+    "file_size": 39907926,
+    "cached_at": 1756224570.0226123,
+    "cached_at_readable": "2025-08-27 00:09:30",
+    "privacy": "public",
+    "upload_method": "file"
   }
 }

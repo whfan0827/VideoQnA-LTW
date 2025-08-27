@@ -84,7 +84,23 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
     };
 
     const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleString();
+        if (!dateString || dateString === 'null' || dateString === 'undefined') {
+            return '-';
+        }
+        
+        const date = new Date(dateString);
+        
+        // Check if the date is valid
+        if (isNaN(date.getTime())) {
+            return '-';
+        }
+        
+        // Check if it's the Unix epoch (1970-01-01)
+        if (date.getTime() === 0) {
+            return '-';
+        }
+        
+        return date.toLocaleString();
     };
 
     const columns: IColumn[] = [

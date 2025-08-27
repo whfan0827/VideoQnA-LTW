@@ -15,30 +15,41 @@ def get_azd_env_values() -> dict:
     - AZURE_SEARCH_SERVICE_RESOURCE_GROUP (Resource Group name of the Azure AI Search resource)
     - AZURE_TENANT_ID (Azure Tenant ID)
     """
-    try:
-        output = subprocess.check_output(["azd", "env", "get-values"])
-        output = output.decode().split("\n")
+    import os
+    
+    # First, try to read values from environment variables (.env file)
+    azd_env_values = {
+        "AZURE_OPENAI_API_KEY": os.getenv("AZURE_OPENAI_API_KEY"),
+        "AZURE_OPENAI_CHATGPT_DEPLOYMENT": os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT"),
+        "AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT": os.getenv("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"),
+        "AZURE_OPENAI_RESOURCE_GROUP": os.getenv("AZURE_OPENAI_RESOURCE_GROUP"),
+        "AZURE_OPENAI_SERVICE": os.getenv("AZURE_OPENAI_SERVICE"),
+        "AZURE_SEARCH_KEY": os.getenv("AZURE_SEARCH_KEY"),
+        "AZURE_SEARCH_SERVICE": os.getenv("AZURE_SEARCH_SERVICE"),
+        "AZURE_SEARCH_LOCATION": os.getenv("AZURE_SEARCH_LOCATION"),
+        "AZURE_SEARCH_SERVICE_RESOURCE_GROUP": os.getenv("AZURE_SEARCH_SERVICE_RESOURCE_GROUP"),
+        "AZURE_TENANT_ID": os.getenv("AZURE_TENANT_ID"),
+    }
+    
+    # If local environment variables are not set, fall back to azd env get-values
+    if not all(v for v in [azd_env_values["AZURE_OPENAI_API_KEY"], azd_env_values["AZURE_OPENAI_SERVICE"]]):
+        try:
+            output = subprocess.check_output(["azd", "env", "get-values"], encoding='utf-8')
+            output = output.split("\n")
 
-        azd_env_values = {}
-        for line in output:
-            if line:
-                key, value = line.split("=", 1)
-                azd_env_values[key] = value[1:-1]
-    except Exception as e:
-        import os
-
-        # read values from environment variables
-        azd_env_values = {
-            "AZURE_OPENAI_API_KEY": os.getenv("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_CHATGPT_DEPLOYMENT": os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT"),
-            "AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT": os.getenv("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"),
-            "AZURE_OPENAI_RESOURCE_GROUP": os.getenv("AZURE_OPENAI_RESOURCE_GROUP"),
-            "AZURE_OPENAI_SERVICE": os.getenv("AZURE_OPENAI_SERVICE"),
-            "AZURE_SEARCH_KEY": os.getenv("AZURE_SEARCH_KEY"),
-            "AZURE_SEARCH_SERVICE": os.getenv("AZURE_SEARCH_SERVICE"),
-            "AZURE_SEARCH_LOCATION": os.getenv("AZURE_SEARCH_LOCATION"),
-            "AZURE_SEARCH_SERVICE_RESOURCE_GROUP": os.getenv("AZURE_SEARCH_SERVICE_RESOURCE_GROUP"),
-            "AZURE_TENANT_ID": os.getenv("AZURE_TENANT_ID"),
-        }
+            azd_fallback_values = {}
+            for line in output:
+                if line and "=" in line:
+                    key, value = line.split("=", 1)
+                    azd_fallback_values[key] = value[1:-1] if len(value) > 2 else value
+            
+            # Only use azd values for keys that are not set in environment
+            for key in azd_env_values:
+                if not azd_env_values[key] and key in azd_fallback_values:
+                    azd_env_values[key] = azd_fallback_values[key]
+                    
+        except Exception as e:
+            # If azd command fails, keep using environment variables only
+            pass
 
     return azd_env_values
