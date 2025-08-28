@@ -11,31 +11,99 @@
 - **🔍 Multi-Database Support**: Azure AI Search and ChromaDB vector databases
 - **🎯 Template System**: Customizable AI response templates for different use cases
 - **📱 Modern UI**: React frontend with Fluent UI components
+- **🔄 Hybrid Storage**: Local file uploads + Azure Blob Storage imports
 
 ![RAG Architecture](docs/ask_your_archive.jpg)
 
-## 🏗️ Architecture Overview
+## 🏗️ System Architecture Overview
 
-### Backend (Python/Flask)
-- **vi_search/**: Core RAG functionality with video processing pipeline
-- **task_manager.py**: Asynchronous task processing with retry logic
-- **database/**: SQLite managers for app data, settings, and AI templates  
-- **services/**: Business logic layer for templates and settings
-- **file_hash_cache.py**: Duplicate detection system (NEW ✨)
+### Processing Architecture (Smart Duplicate Detection)
 
-### Frontend (React/TypeScript)
-- **Fluent UI Components**: Modern, accessible user interface
-- **Real-time Updates**: Task progress tracking and status notifications
-- **Video Player Integration**: Jump directly to relevant timestamps
-- **Library Management**: Upload, organize, and manage video collections
+```mermaid
+flowchart TD
+    A[User Uploads Video] --> B[Generate Safe Filename<br/>Chinese→UUID]
+    B --> C[Calculate File MD5 Hash]
+    C --> D{Check Local Cache<br/>file_hash_cache.json}
+    
+    %% Fast Path (Duplicate Detection)
+    D -->|Found Duplicate| E[⚡ Fast Path<br/>Use Cached video_id]
+    E --> F[Get Existing Insights]
+    F --> G[Generate Vector Embeddings]
+    G --> H[Store in Azure AI Search]
+    H --> I[⚡ Complete < 1 minute]
+    
+    %% Normal Path (First Upload)
+    D -->|Not Found| J[🐌 Normal Path<br/>Upload to Azure Video Indexer]
+    J --> K[Wait for AI Analysis<br/>8-22 minutes]
+    K --> L[Cache Results]
+    L --> M[Generate Embeddings]
+    M --> N[🐌 Complete]
+```
+
+### Backend Structure
+- **Flask app** (`app.py`): Main application with REST API endpoints
+- **vi_search/**: Core RAG functionality
+  - `ask.py`: Query processing with RetrieveThenReadVectorApproach
+  - `prepare_db.py`: Video indexing pipeline with hash cache integration
+  - `file_hash_cache.py`: **NEW** - MD5-based duplicate detection system
+  - `prompt_content_db/`: Vector database implementations (Azure Search, ChromaDB)
+  - `language_models/`: LLM integrations (Azure OpenAI, dummy for testing)
+  - `vi_client/`: Azure Video Indexer API client with optimized networking
+- **database/**: SQLite database managers for app data, AI templates, settings
+- **services/**: Business logic services including blob storage integration
+- **task_manager.py**: **Enhanced** - Background task processing with retry logic
+
+### Frontend Structure
+- **React + TypeScript** with Fluent UI components
+- **Main components**:
+  - `OneShot.tsx`: Main Q&A interface
+  - `AIParameterPanel/`: AI model configuration
+  - `LibraryManagementPanel/`: Video library management with hybrid upload modes
+  - `BlobStorageBrowser/`: Azure Blob Storage browser and import interface
+  - `UploadModeSelector/`: Choose between local files and blob storage
+  - `Answer/`: Response display with video player integration
+- **Vite build system** with proxy configuration for backend API calls
+
+### Hybrid Storage Architecture
+
+The system supports two video source types:
+
+#### 🟢 Local File Upload (Traditional)
+- **Use Case**: Small-scale uploads, testing, development
+- **File Size Limit**: 2GB per file for browser upload
+- **Storage**: Local `data/` directory
+- **Processing**: Direct upload → Video Indexer → Vector Database
+
+#### 🔵 Azure Blob Storage Import (New)
+- **Use Case**: Large-scale production deployments (>30GB files supported)
+- **File Size Limit**: No practical limit (Azure Blob Storage limit)
+- **Storage**: Azure Blob Storage containers
+- **Processing**: SAS URL → Video Indexer → Vector Database
 
 ## 🚀 Quick Start
 
-### Option 1: Full Setup with Azure Services
-For production deployment with Azure OpenAI and Azure AI Search.
+### Prerequisites
 
-### Option 2: Local Development Setup  
-For development and testing without Azure costs.
+**Required**
+- **Python 3.10+** ([Download](https://www.python.org/downloads/))
+- **Node.js 18+** ([Download](https://nodejs.org/))  
+- **PowerShell 7+** ([Install](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D))
+- **Git** ([Download](https://git-scm.com/downloads))
+
+**For Azure Deployment (Optional)**
+- **Azure Developer CLI** (`winget install Microsoft.Azd`)
+- **Azure CLI** (`winget install Microsoft.AzureCLI`)
+
+### Installation Verification
+```powershell
+# Verify all prerequisites
+python --version    # Should show 3.10+
+node --version      # Should show 18+
+pwsh --version      # Should show 7+
+git --version       # Any recent version
+```
+
+### Option 1: Automated Setup (Recommended)
 
 ```powershell
 # Clone and navigate to project
@@ -53,35 +121,27 @@ This script will:
 - Start Flask backend server
 - Open browser to http://localhost:5000
 
-## ⚠️ Important Requirements
+### Option 2: Manual Setup
 
-**Azure Services** (for production):
-- **Azure OpenAI** access enabled ([request here](https://aka.ms/oaiapply))
-- **Azure AI Search** service 
-- **Azure Video Indexer** account
-- Account with `Microsoft.Authorization/roleAssignments/write` permissions
-
-**Cost Notice**: Azure resources have monthly costs - use local development mode for testing.
-
-## 📋 Prerequisites
-
-### Required
-- **Python 3.10+** ([Download](https://www.python.org/downloads/))
-- **Node.js 18+** ([Download](https://nodejs.org/))  
-- **PowerShell 7+** ([Install](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D))
-- **Git** ([Download](https://git-scm.com/downloads))
-
-### For Azure Deployment (Optional)
-- **Azure Developer CLI** (`winget install Microsoft.Azd`)
-- **Azure CLI** (`winget install Microsoft.AzureCLI`)
-
-### Installation Verification
+**Backend Setup**
 ```powershell
-# Verify all prerequisites
-python --version    # Should show 3.10+
-node --version      # Should show 18+
-pwsh --version      # Should show 7+
-git --version       # Any recent version
+cd app\backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# Edit .env file with your configuration
+$env:PYTHONPATH = "$(Get-Location)"
+python app.py
+```
+
+**Frontend Setup**
+```powershell
+cd app\frontend
+npm install
+npm run build  # Production build (outputs to ../backend/static)
+# or
+npm run dev    # Development server with proxy to backend
 ```
 
 ## 🛠️ Development Modes
@@ -121,8 +181,6 @@ $env:PROMPT_CONTENT_DB = "azure_search"
 
 ## 🚀 Deployment Options
 
-You can choose from several ways to run this application:
-
 ### 🖥️ **Option 1: Local Development (Recommended for Development)**
 
 **Advantages:**
@@ -145,69 +203,50 @@ You can choose from several ways to run this application:
 - Simple deployment
 - Production-friendly
 
-**Setup:**
+**Basic Docker Setup:**
 ```powershell
-.\start_docker.ps1       # Docker deployment
+.\start_docker.ps1       # Interactive Docker setup
 ```
 
-### 📊 **Comparison: Local vs Docker**
+**Production Docker Setup:**
+```bash
+# Copy environment template
+cp .env.production.template .env.production
 
-| Feature | Local | Docker |
-|---------|-------|--------|
-| Startup Speed | ⚡ Fast | 🐌 Slower (first build) |
-| Environment Isolation | ❌ None | ✅ Complete isolation |
-| Hot Reload | ✅ Native support | ⚡ Needs configuration |
-| Debugging | ✅ Direct | 🔧 Needs setup |
-| Deployment Consistency | ❌ Depends on local env | ✅ Fully consistent |
-| Resource Usage | ✅ Low | ⚖️ Medium |
+# Edit environment variables
+nano .env.production  # Fill in your Azure service configuration
 
-### 🎯 **Usage Scenarios**
+# Build and start services
+docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
 
-**Development Stage** - Use Local:
-```powershell
-.\start_local.ps1
-```
-- Fast iteration, instant debugging, frontend hot-reload
-
-**Testing Stage** - Use Docker:
-```powershell
-.\start_docker.ps1
-# Choose 1: Test mode
-```
-- Environment consistency testing, containerization validation
-
-**Deployment Stage** - Use Docker:
-```powershell
-docker compose up -d --build
-```
-- Production deployment, service orchestration
-
-### ⚡ **Quick Decision Guide**
-
-**If you are:**
-- **First-time user** → Choose Local (`.\start_local.ps1`)
-- **Frontend developer** → Choose Local (hot-reload support)  
-- **Backend developer** → Either option works
-- **DevOps/Deployment** → Choose Docker (`.\start_docker.ps1`)
-- **Team collaboration** → Choose Docker (consistency)
-
-### 🔄 **Switching Between Methods**
-
-**From Local to Docker:**
-```powershell
-# Stop local service (Ctrl+C)
-.\start_docker.ps1
+# Optional: Start with Nginx reverse proxy
+docker-compose -f docker-compose.prod.yml --profile with-nginx --env-file .env.production up -d
 ```
 
-**From Docker to Local:**
+### ☁️ **Option 3: Azure Cloud Deployment**
+
 ```powershell
-.\start_docker.ps1  # Choose 4: Stop containers
-.\start_local.ps1   # Start local version
+# Initial deployment - creates all Azure resources
+azd up
+
+# Deploy application updates (after initial setup)
+azd deploy
 ```
+
+### 📊 **Comparison: Local vs Docker vs Azure**
+
+| Feature | Local | Docker | Azure Cloud |
+|---------|-------|--------|-------------|
+| Startup Speed | ⚡ Fast | 🐌 Slower (first build) | 🐌 Slower (provisioning) |
+| Environment Isolation | ❌ None | ✅ Complete isolation | ✅ Complete isolation |
+| Hot Reload | ✅ Native support | ⚡ Needs configuration | ❌ Not applicable |
+| Debugging | ✅ Direct | 🔧 Needs setup | 🔧 Remote debugging |
+| Deployment Consistency | ❌ Depends on local env | ✅ Fully consistent | ✅ Fully consistent |
+| Resource Usage | ✅ Low | ⚖️ Medium | ⚖️ Cloud resources |
+| Scalability | ❌ Limited | ⚖️ Container scalability | ✅ Auto-scaling |
+| Cost | ✅ Free | ✅ Infrastructure only | 💰 Azure services |
 
 ## 🔐 Azure Authentication Methods
-
-This application supports **two Azure authentication methods**:
 
 ### Method 1: Service Principal Authentication (Recommended for Production)
 **Best for production, CI/CD, and automated environments**
@@ -297,7 +336,23 @@ az group create --name VideoQnA-ResourceGroup --location eastus
 2. **Configure public access** for videos during indexing
 3. **Note account details:** Account Name, Resource Group, Subscription ID
 
-### Step 5: Configure Environment Variables
+### Step 5: Set up Azure Blob Storage (Optional)
+
+For hybrid storage architecture supporting large file uploads:
+
+1. **Create Storage Account:**
+   ```bash
+   az storage account create \
+     --name your-storage-account \
+     --resource-group VideoQnA-ResourceGroup \
+     --location eastus \
+     --sku Standard_LRS
+   ```
+
+2. **Create containers for video storage**
+3. **Note account name and access key**
+
+### Step 6: Configure Environment Variables
 
 Create a `.env` file in the `app/backend/` directory with the following configuration:
 
@@ -330,6 +385,12 @@ AZURE_SEARCH_SERVICE=your-search-service-name
 AZURE_SEARCH_LOCATION=your-search-service-location
 AZURE_SEARCH_SERVICE_RESOURCE_GROUP=your-search-resource-group
 
+# Azure Blob Storage Configuration (Optional - for hybrid storage)
+AZURE_STORAGE_ACCOUNT_NAME=your_storage_account_name
+AZURE_STORAGE_ACCOUNT_KEY=your_storage_account_key
+# Or use connection string instead:
+# AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=your_account;AccountKey=your_key;EndpointSuffix=core.windows.net
+
 # Application Mode Configuration
 LANGUAGE_MODEL=openai
 PROMPT_CONTENT_DB=azure_search
@@ -350,10 +411,10 @@ LANGUAGE_MODEL=dummy
 PROMPT_CONTENT_DB=chromadb
 ```
 
-### Step 6: Index Video Archive
+### Step 7: Index Video Archive
 
 **Prerequisites:**
-1. Complete Azure service setup (Steps 1-5 above)
+1. Complete Azure service setup (Steps 1-6 above)
 2. Ensure `.env` file is configured with all required variables
 3. Install Python dependencies:
    ```powershell
@@ -371,7 +432,7 @@ python .\app\backend\vi_search\prepare_db.py
 ```
 
 **What happens during indexing:**
-1. **Video Upload**: Videos from `data/` folder are uploaded to Azure Video Indexer
+1. **Video Upload**: Videos from `data/` folder or Azure Blob Storage are processed
 2. **Duplicate Detection**: File hash cache prevents re-uploading identical videos
 3. **AI Processing**: Azure Video Indexer extracts insights (transcripts, topics, faces, etc.)
 4. **Embedding Generation**: Azure OpenAI creates vector embeddings for text content
@@ -397,6 +458,7 @@ python .\app\backend\vi_search\prepare_db.py
 - **Backend**: Flask REST API with modular service layers  
 - **Vector DB**: Support for both Azure AI Search and local ChromaDB
 - **Language Models**: Azure OpenAI integration with dummy fallback for testing
+- **Hybrid Storage**: Local files + Azure Blob Storage with unified processing
 
 ### 📊 Background Task Management
 - **Async Processing**: Non-blocking video upload and indexing
@@ -411,34 +473,65 @@ python .\app\backend\vi_search\prepare_db.py
 - **Environment Isolation**: Clear separation between test and production modes
 - **Secret Management**: Secure environment variable handling for sensitive configuration
 - **Request Security**: Rate limiting and input validation on all API endpoints
+- **SAS URLs**: Time-limited access to blob storage with fine-grained permissions
 
 ### 🎨 User Interface
 - **Modern React Frontend**: TypeScript with Fluent UI components
 - **Responsive Design**: Mobile-friendly interface with adaptive layouts
 - **Component Architecture**: Modular, reusable UI components with consistent naming
 - **Real-time Updates**: Live progress tracking and status notifications
+- **Hybrid Upload Interface**: Seamless switching between local files and blob storage
 - **Intuitive Navigation**: Clean, organized button layout and panel system
 
-### Step 7: Deploy to Azure (Optional)
+## 🛠️ Advanced Features
 
-**Prerequisites:**
-- Install Azure Developer CLI: `winget install Microsoft.Azd`
-- Install PowerShell 7+: [Microsoft Store](https://www.microsoft.com/store/productId/9MZ1SNWT0N5D)
+### Hybrid Storage Management
 
-**Deployment Steps:**
-```powershell
-# Initial deployment - creates all Azure resources
-azd up
+**Upload Mode Selection**: The Library Management panel provides:
+1. **Source Selection**: Radio buttons for Local Files vs Azure Blob Storage
+2. **Conditional UI**: Different interfaces based on selected source
+3. **Unified Processing**: Same task tracking regardless of source
 
-# Deploy application updates (after initial setup)
-azd deploy
-```
+**Blob Storage Browser Features**:
+- Browse containers and blobs with intuitive interface
+- Pattern-based selection (e.g., `*.mp4` for all video files)
+- Multi-selection support for batch imports
+- File list import from text input
+- Real-time file size and metadata display
 
-**Deployment Process:**
-1. **azd up**: Creates App Service, configures environment variables, deploys application
-2. **azd deploy**: Updates existing deployment with code changes
-3. **Resource Creation**: Automatically provisions required Azure resources
-4. **Configuration**: Applies environment variables from azd environment
+**Large File Support**:
+- Support for files >30GB through Azure Blob Storage
+- Direct browser-to-blob upload using SAS URLs
+- No server bandwidth limitations
+- Parallel chunk uploads for optimal performance
+
+### Conversation Starters Management
+
+**Customize Example Questions**: The application includes a dynamic conversation starters system that allows administrators to customize the example questions displayed on the main Q&A interface.
+
+**Features:**
+- **Three Customizable Questions**: Edit up to 3 example questions in the Conversation Settings panel
+- **Local Storage**: Settings persist in browser localStorage for consistent user experience
+- **Real-time Updates**: Changes are immediately reflected in the UI without page refresh
+- **Reset to Defaults**: One-click restoration to original example questions
+- **Smart Filtering**: Empty inputs are automatically filtered out
+
+**Usage:**
+1. **Access Settings**: Click the "Conversation Settings" button in the main interface
+2. **Edit Questions**: Modify the three text input fields with your custom questions
+3. **Save Changes**: Click "Save Conversation Starters" to persist changes
+4. **Reset Option**: Use "Reset to Defaults" to restore original questions
+
+**Default Questions:**
+1. "What insights are included with Azure AI Video Indexer?"
+2. "What is OCR?"
+3. "What is the distance to Mars?"
+
+**Technical Implementation:**
+- **Storage**: Browser localStorage with `conversation_starters` key
+- **Data Format**: JSON array with `text` and `value` properties
+- **Component Communication**: Custom events (`conversation_starters_updated`) for real-time updates
+- **Error Handling**: Automatic fallback to defaults if localStorage data is corrupted
 
 ## 🧪 Testing & Verification
 
@@ -463,14 +556,20 @@ $env:PROMPT_CONTENT_DB = "azure_search"
 .\start_local.ps1
 ```
 
+### Test Hybrid Storage
+```powershell
+# Test blob storage connectivity (requires Azure Storage credentials)
+cd .\app\backend\
+$env:PYTHONPATH = "$(Get-Location)"
+python -c "from services.blob_storage_service import get_blob_storage_service; print('Blob service:', get_blob_storage_service())"
+```
+
 ## 📁 Project Structure
 
 ```
 VideoQnA-LTW/
-├── 📄 README.md                    # Project documentation
+├── 📄 README.md                    # This comprehensive documentation
 ├── 📄 CLAUDE.md                    # Claude Code guidance
-├── 📄 DEPLOYMENT_OPTIONS.md        # Deployment methods
-├── 📄 LOCAL_DEVELOPMENT.md         # Development setup guide
 ├── 📄 LICENSE                      # Project license
 │
 ├── 📁 app/                         # Main application
@@ -514,11 +613,13 @@ VideoQnA-LTW/
 │   │   │   ├── 📄 database_manager.py # Base database manager
 │   │   │   ├── 📄 init_db.py       # Database initialization
 │   │   │   ├── 📄 schema.sql       # Database schema
-│   │   │   └── 📄 ai_templates_schema.sql # AI templates schema
+│   │   │   ├── 📄 ai_templates_schema.sql # AI templates schema
+│   │   │   └── 📄 README.md        # Database documentation
 │   │   │
 │   │   ├── 📁 services/            # Business logic services
 │   │   │   ├── 📄 ai_template_service.py # Template management
-│   │   │   └── 📄 settings_service.py # Settings management
+│   │   │   ├── 📄 settings_service.py # Settings management
+│   │   │   └── 📄 blob_storage_service.py # Azure Blob Storage integration
 │   │   │
 │   │   ├── 📁 models/              # Data models
 │   │   │   └── 📄 settings.py      # Settings model
@@ -555,6 +656,8 @@ VideoQnA-LTW/
 │           ├── 📁 components/      # React components
 │           │   ├── 📁 AIParameterButton/    # AI settings button
 │           │   ├── 📁 AIParameterPanel/     # AI configuration panel
+│           │   ├── 📁 BlobStorageBrowser/   # Azure Blob Storage browser
+│           │   ├── 📁 UploadModeSelector/   # Upload mode selection
 │           │   ├── 📁 ConversationSettingsButton/ # Settings button
 │           │   ├── 📁 ConversationSettingsPanel/  # Settings panel
 │           │   ├── 📁 LibraryManagementButton/    # Library button
@@ -606,6 +709,7 @@ VideoQnA-LTW/
 ├── 📄 azure.yaml                   # Azure Developer CLI config
 ├── 📄 docker-compose.yml           # Docker production setup
 ├── 📄 docker-compose.dev.yml       # Docker development setup
+├── 📄 docker-compose.prod.yml      # Docker production setup
 ├── 📄 Dockerfile                   # Container definition
 │
 └── 🚀 Scripts/                     # Automation scripts
@@ -616,35 +720,85 @@ VideoQnA-LTW/
     └── 📄 set_env.ps1              # Environment setup
 ```
 
-## 🛠️ Advanced Features
+## 📈 Performance Optimization
 
-### Conversation Starters Management
+### Smart Duplicate Detection Performance
+| Scenario | Processing Time | Description |
+|----------|----------------|-------------|
+| First Upload | 8-22 minutes | Complete Azure Video Indexer analysis process |
+| Duplicate Detection | < 1 minute | Use existing analysis results |
+| Q&A Query | 2-5 seconds | Semantic search + LLM generation |
+| Video Deletion | 10-30 seconds | Dual cleanup of all storage locations |
 
-**Customize Example Questions**: The application includes a dynamic conversation starters system that allows administrators to customize the example questions displayed on the main Q&A interface.
+### Cost Optimization
+- **Avoid Duplicate Analysis**: Save Azure Video Indexer usage quota
+- **Rapid Scaling**: Same video can be added to multiple indexes at low cost
+- **Smart Caching**: Reduce unnecessary API calls
+- **Blob Storage**: Cost-effective storage for large video collections
 
-**Features:**
-- **Three Customizable Questions**: Edit up to 3 example questions in the Conversation Settings panel
-- **Local Storage**: Settings persist in browser localStorage for consistent user experience
-- **Real-time Updates**: Changes are immediately reflected in the UI without page refresh
-- **Reset to Defaults**: One-click restoration to original example questions
-- **Smart Filtering**: Empty inputs are automatically filtered out
+### Supported Use Cases
+✅ **Same Video, Different Indexes**: Complete in seconds  
+✅ **Renamed Videos**: System still recognizes duplicates  
+✅ **Re-upload After Errors**: Extremely fast completion  
+✅ **Multi-environment Deployment**: Dev/Test/Production rapid sync  
+✅ **Bulk Video Migration**: Smart deduplication, avoid redundant processing  
+✅ **Large File Handling**: 30GB+ files via blob storage integration
 
-**Usage:**
-1. **Access Settings**: Click the "Conversation Settings" button in the main interface
-2. **Edit Questions**: Modify the three text input fields with your custom questions
-3. **Save Changes**: Click "Save Conversation Starters" to persist changes
-4. **Reset Option**: Use "Reset to Defaults" to restore original questions
+## 🚨 Troubleshooting
 
-**Default Questions:**
-1. "What insights are included with Azure AI Video Indexer?"
-2. "What is OCR?"
-3. "What is the distance to Mars?"
+### Common Issues
 
-**Technical Implementation:**
-- **Storage**: Browser localStorage with `conversation_starters` key
-- **Data Format**: JSON array with `text` and `value` properties
-- **Component Communication**: Custom events (`conversation_starters_updated`) for real-time updates
-- **Error Handling**: Automatic fallback to defaults if localStorage data is corrupted
+#### Error during deployment
+If you see this error while running `azd deploy`:
+```
+read /tmp/azd1992237260/backend_env/lib64: is a directory
+```
+
+Delete the `./app/backend/backend_env folder` and re-run the `azd deploy` command.
+
+If the web app fails to deploy and you receive a '404 Not Found' message in your browser, run 'azd deploy'.
+
+#### Video Indexing Process Timed Out
+If the video indexing process timeout is reached, don't worry. You can simply execute the `prepare_db.py` script again. The script is designed to continue where it left off, so you won't lose any progress made before the timeout occurred.
+
+#### Python Version Issues
+Make sure you have the correct version of Python installed. The script requires Python 3.10+. You can check your Python version by running `python --version` in your terminal.
+
+#### Azure Service Connection Issues
+1. **Authentication Problems**
+   - Verify Service Principal credentials are correct
+   - Check Azure CLI login status (`az account show`)
+   - Ensure proper role assignments
+
+2. **Performance Issues**
+   - Check network connectivity to Azure services
+   - Monitor Azure service health status
+   - Verify subscription quotas and limits
+
+#### Blob Storage Issues
+1. **Large File Uploads**
+   - Ensure stable network connection
+   - Check Azure Storage account access permissions
+   - Verify SAS URL expiration times
+
+2. **Container Access**
+   - Confirm container exists and is accessible
+   - Check blob storage account permissions
+   - Validate connection string format
+
+### Health Checks
+```powershell
+# Check application status
+curl http://localhost:5000/indexes
+
+# Check Docker container status (if using Docker)
+docker-compose ps
+
+# Check blob storage connectivity
+cd .\app\backend\
+$env:PYTHONPATH = "$(Get-Location)"
+python -c "from services.blob_storage_service import get_blob_storage_service; service = get_blob_storage_service(); print('✅ Blob service connected')"
+```
 
 ## FAQ
 
@@ -652,24 +806,40 @@ VideoQnA-LTW/
 
 **_Answer_**: The sections retrieved from the Video Indexer Prompt Content API allow for the creation of granular records in the vector database. Each of these sections corresponds to a small part of the video. Once the section embedding is generated and subsequently retrieved, the user is shown the relevant time segment in the video.
 
-## Troubleshooting
+**_Question_**: What's the difference between local file upload and blob storage import?
 
-#### Error during deployment
+**_Answer_**: Local file upload is limited to 2GB per file due to browser constraints and stores files locally. Blob storage import can handle files of any size (30GB+) and uses Azure Blob Storage for scalable, enterprise-grade storage with direct browser-to-cloud upload via SAS URLs.
 
-If you see this error while running `azd deploy`:
+**_Question_**: How does the duplicate detection system work?
 
-`read /tmp/azd1992237260/backend_env/lib64: is a directory`
+**_Answer_**: The system calculates MD5 hashes of video content (not filenames) and maintains a local cache mapping hashes to Azure Video Indexer video IDs. When a duplicate is detected, it skips the expensive upload and analysis steps, completing processing in under 1 minute instead of 8-22 minutes.
 
-delete the `./app/backend/backend_env folder` and re-run the `azd deploy` command.
+**_Question_**: Can I mix local files and blob storage videos in the same library?
 
-This issue is being tracked here: https://github.com/Azure/azure-dev/issues/1237
+**_Answer_**: Yes, the hybrid architecture supports mixing both source types in a single library. The system tracks the source type in the database and handles both transparently with the same user interface and processing pipeline.
 
-If the web app fails to deploy and you receive a '404 Not Found' message in your browser, run 'azd deploy'.
+## 🤝 Development Guidelines
 
-#### Video Indexing Process Timed Out
+- **Virtual Environment**: Always check for virtual environment before running Python code
+- **Functionality Preservation**: Preserve existing functionality when making changes  
+- **Language Standards**: Use English for code and comments, Traditional Chinese for user-facing messages
+- **Planning**: Plan changes and get approval before implementing major features
+- **Testing**: Test both local and production modes before committing changes
+- **Security**: Never commit secrets or API keys to the repository
 
-If the video indexing process timeout is reached, don't worry. You can simply execute the `prepare_db.py` script again. The script is designed to continue where it left off, so you won't lose any progress made before the timeout occurred.
+## 📞 Support
 
-#### Executing prepare_db.py results in a type error
+For technical support:
+1. Check application logs in `logs/` directory
+2. Review environment configuration in `.env` file  
+3. Verify Azure service status and permissions
+4. Test network connectivity to Azure endpoints
+5. Check this documentation for common solutions
 
-Make sure you have the correct version of Python installed. The script requires Python 3.10. You can check your Python version by running `python --version` in your terminal.
+For bugs or feature requests, please refer to the project repository or contact the development team.
+
+---
+
+**Last Updated**: 2025-08-28  
+**System Version**: VideoQnA-LTW v3.0 (Hybrid Storage)  
+**Documentation Maintained by**: Claude Code Assistant
