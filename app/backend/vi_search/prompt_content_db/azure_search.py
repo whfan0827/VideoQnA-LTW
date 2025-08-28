@@ -283,3 +283,54 @@ class AzureVectorSearch(PromptContentDB):
         except Exception as e:
             logger.error(f"Failed to delete documents for video {video_id}: {e}")
             return False
+    
+    def delete_video_documents_by_filename(self, filename: str) -> bool:
+        """
+        Delete all documents belonging to a specific video by filename from the Azure Search index.
+        
+        :param filename: The video filename to delete documents for
+        :return: True if deletion was successful, False otherwise
+        """
+        try:
+            # Search for documents with the specific filename using various possible field names
+            search_filters = [
+                f"video_name eq '{filename}'",
+                f"filename eq '{filename}'", 
+                f"substringof('{filename}', video_name)",
+                f"substringof('{filename}', filename)"
+            ]
+            
+            documents_to_delete = []
+            count = 0
+            
+            for filter_query in search_filters:
+                try:
+                    search_results = self.db_handle.search(
+                        search_text="*",
+                        filter=filter_query,
+                        select=["id"],
+                        top=1000
+                    )
+                    
+                    for result in search_results:
+                        doc_id = result["id"]
+                        if not any(doc["id"] == doc_id for doc in documents_to_delete):
+                            documents_to_delete.append({"id": doc_id})
+                            count += 1
+                            
+                except Exception as filter_error:
+                    logger.debug(f"Filter {filter_query} failed: {filter_error}")
+                    continue
+            
+            if documents_to_delete:
+                # Perform batch deletion
+                result = self.db_handle.delete_documents(documents_to_delete)
+                logger.info(f"Deleted {count} documents for video filename {filename}")
+                return True
+            else:
+                logger.warning(f"No documents found for video filename {filename}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to delete documents for video filename {filename}: {e}")
+            return False

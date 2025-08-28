@@ -26,6 +26,9 @@ interface VideoItem {
     status: string;
     created_at: string;
     updated_at: string;
+    source_type?: string;
+    blob_url?: string;
+    blob_container?: string;
 }
 
 interface VideoListProps {
@@ -40,6 +43,9 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
     const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [selectedCount, setSelectedCount] = useState(0);
+    const [cleanupDialogVisible, setCleanupDialogVisible] = useState(false);
+    const [cleanupInProgress, setCleanupInProgress] = useState(false);
+    const [cleanupResult, setCleanupResult] = useState<any>(null);
     const [selection] = useState(new Selection({
         onSelectionChanged: () => {
             // Force component re-render by updating selection count
@@ -105,14 +111,36 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
 
     const columns: IColumn[] = [
         {
+            key: 'video_id',
+            name: 'Video ID',
+            fieldName: 'video_id',
+            minWidth: 120,
+            maxWidth: 150,
+            isResizable: true,
+            onRender: (item: VideoItem) => (
+                <span 
+                    title={item.video_id || 'No Video ID'}
+                    style={{ 
+                        fontFamily: 'monospace', 
+                        fontSize: '12px',
+                        color: item.video_id ? '#0078d4' : '#a19f9d'
+                    }}
+                >
+                    {item.video_id || 'N/A'}
+                </span>
+            )
+        },
+        {
             key: 'filename',
             name: 'Filename',
             fieldName: 'filename',
-            minWidth: 200,
-            maxWidth: 300,
+            minWidth: 180,
+            maxWidth: 280,
             isResizable: true,
             onRender: (item: VideoItem) => (
-                <span title={item.filename}>{item.filename}</span>
+                <div>
+                    <span title={item.filename}>{item.filename}</span>
+                </div>
             )
         },
         {
@@ -123,6 +151,22 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             maxWidth: 120,
             isResizable: true,
             onRender: (item: VideoItem) => formatFileSize(item.file_size)
+        },
+        {
+            key: 'source_type',
+            name: 'Source',
+            fieldName: 'source_type',
+            minWidth: 80,
+            maxWidth: 120,
+            isResizable: true,
+            onRender: (item: VideoItem) => (
+                <span style={{ 
+                    color: item.source_type === 'blob_storage' ? '#0078d4' : '#605e5c',
+                    fontWeight: 500
+                }}>
+                    {item.source_type === 'blob_storage' ? 'Blob Storage' : 'Local File'}
+                </span>
+            )
         },
         {
             key: 'status',
@@ -210,12 +254,57 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
         }
     };
 
+    const handleCleanupOrphaned = async (shouldDelete: boolean = false) => {
+        setCleanupInProgress(true);
+        setError(null);
+        
+        try {
+            const response = await fetch(`/libraries/${libraryName}/cleanup-orphaned`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ delete: shouldDelete })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to cleanup orphaned videos');
+            }
+            
+            const result = await response.json();
+            setCleanupResult(result);
+            
+            if (shouldDelete && result.deleted > 0) {
+                // Refresh the list if videos were actually deleted
+                await loadVideos();
+            }
+            
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to cleanup orphaned videos');
+            console.error('Error cleaning up orphaned videos:', err);
+        } finally {
+            setCleanupInProgress(false);
+        }
+    };
+
     const commandBarItems: ICommandBarItemProps[] = [
         {
             key: 'refresh',
             text: 'Refresh',
             iconProps: { iconName: 'Refresh' },
             onClick: () => { loadVideos(); }
+        },
+        {
+            key: 'cleanup',
+            text: 'Cleanup Orphaned',
+            iconProps: { iconName: 'CleanData' },
+            disabled: cleanupInProgress,
+            onClick: () => {
+                setCleanupResult(null);
+                setCleanupDialogVisible(true);
+                handleCleanupOrphaned(false); // First check only
+            }
         },
         {
             key: 'delete',
@@ -293,6 +382,95 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
                         onClick={() => setDeleteDialogVisible(false)} 
                         text="Cancel" 
                         disabled={deleting}
+                    />
+                </DialogFooter>
+            </Dialog>
+            
+            <Dialog
+                hidden={!cleanupDialogVisible}
+                onDismiss={() => {
+                    setCleanupDialogVisible(false);
+                    setCleanupResult(null);
+                }}
+                dialogContentProps={{
+                    type: DialogType.normal,
+                    title: 'Cleanup Orphaned Videos',
+                    subText: cleanupResult ? '' : 'Checking for orphaned video records...'
+                }}
+                modalProps={{
+                    isBlocking: true,
+                    styles: { main: { maxWidth: 600, minHeight: 300 } },
+                }}
+            >
+                <div style={{ padding: '10px 0' }}>
+                    {cleanupInProgress && (
+                        <div style={{ textAlign: 'center', padding: 20 }}>
+                            <Spinner size={SpinnerSize.medium} label="Checking videos..." />
+                        </div>
+                    )}
+                    
+                    {cleanupResult && (
+                        <div>
+                            <div style={{ marginBottom: 15 }}>
+                                <strong>Cleanup Results:</strong>
+                                <ul style={{ marginTop: 5 }}>
+                                    <li>Total videos checked: {cleanupResult.total_checked}</li>
+                                    <li>Orphaned records found: {cleanupResult.total_orphaned}</li>
+                                    {cleanupResult.deleted !== undefined && (
+                                        <li style={{ color: cleanupResult.deleted > 0 ? 'green' : 'orange' }}>
+                                            Records deleted: {cleanupResult.deleted}
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
+                            
+                            {cleanupResult.orphaned && cleanupResult.orphaned.length > 0 && (
+                                <div>
+                                    <strong>Orphaned Videos:</strong>
+                                    <div style={{ 
+                                        maxHeight: 200, 
+                                        overflow: 'auto', 
+                                        border: '1px solid #d1d1d1', 
+                                        padding: 10, 
+                                        marginTop: 5,
+                                        fontSize: '12px'
+                                    }}>
+                                        {cleanupResult.orphaned.map((orphan: any, idx: number) => (
+                                            <div key={idx} style={{ marginBottom: 8, padding: 5, backgroundColor: '#f8f8f8' }}>
+                                                <div><strong>File:</strong> {orphan.filename}</div>
+                                                <div><strong>Video ID:</strong> {orphan.video_id || 'N/A'}</div>
+                                                <div><strong>Reason:</strong> {orphan.reason}</div>
+                                                {orphan.deleted !== undefined && (
+                                                    <div style={{ color: orphan.deleted ? 'green' : 'red' }}>
+                                                        <strong>Deleted:</strong> {orphan.deleted ? 'Yes' : 'No'}
+                                                        {orphan.delete_error && ` (${orphan.delete_error})`}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                
+                <DialogFooter>
+                    {cleanupResult && cleanupResult.total_orphaned > 0 && cleanupResult.deleted === undefined && (
+                        <PrimaryButton 
+                            onClick={() => handleCleanupOrphaned(true)} 
+                            disabled={cleanupInProgress}
+                            text={cleanupInProgress ? 'Deleting...' : `Delete ${cleanupResult.total_orphaned} Orphaned Records`}
+                            style={{ backgroundColor: '#d13438', borderColor: '#d13438' }}
+                        />
+                    )}
+                    <DefaultButton 
+                        onClick={() => {
+                            setCleanupDialogVisible(false);
+                            setCleanupResult(null);
+                        }} 
+                        text="Close" 
+                        disabled={cleanupInProgress}
                     />
                 </DialogFooter>
             </Dialog>

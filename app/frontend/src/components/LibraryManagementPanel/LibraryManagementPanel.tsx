@@ -17,6 +17,8 @@ import { useTaskManager } from "../../hooks/useTaskManager";
 import { TaskProgressCard } from "../TaskProgressCard";
 import VideoList from "../VideoList/VideoList";
 import { LibraryList } from "../LibraryList";
+import { UploadModeSelector } from "../UploadModeSelector";
+import { BlobStorageBrowser } from "../BlobStorageBrowser";
 
 interface LibraryManagementPanelProps {
     indexes: IDropdownOption[];
@@ -33,7 +35,9 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         return localStorage.getItem('libraryManagement_selectedUploadLibrary') || "";
     });
     const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
+    const [sourceType, setSourceType] = useState<'local' | 'blob'>('local');
     const [videoUrls, setVideoUrls] = useState<string>('');
+    const [selectedBlobs, setSelectedBlobs] = useState<any[]>([]);
     const [selectedManageLibrary, setSelectedManageLibrary] = useState(() => {
         return localStorage.getItem('libraryManagement_selectedManageLibrary') || "";
     });
@@ -117,7 +121,14 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
 
     // Upload Videos - Now supports both file and URL upload
     const handleUploadVideos = async () => {
-        const hasItems = uploadMode === 'file' ? selectedFiles.length > 0 : videoUrls.trim().length > 0;
+        // Check if we have items to process based on source type and upload mode
+        let hasItems = false;
+        if (sourceType === 'local') {
+            hasItems = uploadMode === 'file' ? selectedFiles.length > 0 : videoUrls.trim().length > 0;
+        } else if (sourceType === 'blob') {
+            hasItems = selectedBlobs.length > 0;
+        }
+        
         if (!hasItems || !selectedUploadLibrary) return;
 
         setIsProcessing(true);
@@ -125,85 +136,163 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
             let successCount = 0;
             let failCount = 0;
 
-            if (uploadMode === 'file') {
-                // Handle file uploads
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const file = selectedFiles[i];
-                    
-                    // Check file size before upload
-                    if (file.size > 2 * 1024 * 1024 * 1024) {
-                        showMessage(`File ${file.name} is too large (${(file.size / 1024 / 1024 / 1024).toFixed(1)}GB). Use URL upload for files > 2GB.`, MessageBarType.error);
-                        failCount++;
-                        continue;
-                    }
-                    
-                    const formData = new FormData();
-                    formData.append('video', file);
-                    formData.append('library', selectedUploadLibrary);
-
-                    try {
-                        const response = await fetch('/upload', {
-                            method: 'POST',
-                            body: formData,
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`Upload failed for ${file.name}`);
-                        }
-
-                        const result = await response.json();
+            if (sourceType === 'local') {
+                if (uploadMode === 'file') {
+                    // Handle local file uploads
+                    for (let i = 0; i < selectedFiles.length; i++) {
+                        const file = selectedFiles[i];
                         
-                        // Add task to tracking
-                        addTask(result.task_id, file.name, selectedUploadLibrary);
-                        successCount++;
-
-                    } catch (error) {
-                        console.error(`Failed to upload ${file.name}:`, error);
-                        failCount++;
-                    }
-                }
-                
-                // Clear selected files after processing
-                setSelectedFiles([]);
-            } else {
-                // Handle URL uploads
-                const urls = videoUrls.split('\n').filter(url => url.trim());
-                
-                for (let i = 0; i < urls.length; i++) {
-                    const url = urls[i].trim();
-                    const videoName = url.split('/').pop() || `video_${i + 1}`;
-                    
-                    try {
-                        const response = await fetch('/upload', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                video_url: url,
-                                library: selectedUploadLibrary,
-                                video_name: videoName
-                            }),
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`URL upload failed for ${url}`);
+                        // Check file size before upload
+                        if (file.size > 2 * 1024 * 1024 * 1024) {
+                            showMessage(`File ${file.name} is too large (${(file.size / 1024 / 1024 / 1024).toFixed(1)}GB). Use URL upload for files > 2GB.`, MessageBarType.error);
+                            failCount++;
+                            continue;
                         }
-
-                        const result = await response.json();
                         
-                        // Add task to tracking
-                        addTask(result.task_id, videoName, selectedUploadLibrary);
-                        successCount++;
+                        const formData = new FormData();
+                        formData.append('video', file);
+                        formData.append('library', selectedUploadLibrary);
 
-                    } catch (error) {
-                        console.error(`Failed to upload URL ${url}:`, error);
-                        failCount++;
+                        try {
+                            const response = await fetch('/upload', {
+                                method: 'POST',
+                                body: formData,
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`Upload failed for ${file.name}`);
+                            }
+
+                            const result = await response.json();
+                            
+                            // Add task to tracking
+                            addTask(result.task_id, file.name, selectedUploadLibrary);
+                            successCount++;
+
+                        } catch (error) {
+                            console.error(`Failed to upload ${file.name}:`, error);
+                            failCount++;
+                        }
                     }
+                    
+                    // Clear selected files after processing
+                    setSelectedFiles([]);
+                } else {
+                    // Handle URL uploads
+                    const urls = videoUrls.split('\n').filter(url => url.trim());
+                    
+                    for (let i = 0; i < urls.length; i++) {
+                        const url = urls[i].trim();
+                        const videoName = url.split('/').pop() || `video_${i + 1}`;
+                        
+                        try {
+                            const response = await fetch('/upload', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    video_url: url,
+                                    library: selectedUploadLibrary,
+                                    video_name: videoName
+                                }),
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`URL upload failed for ${url}`);
+                            }
+
+                            const result = await response.json();
+                            
+                            // Add task to tracking
+                            addTask(result.task_id, videoName, selectedUploadLibrary);
+                            successCount++;
+
+                        } catch (error) {
+                            console.error(`Failed to upload URL ${url}:`, error);
+                            failCount++;
+                        }
+                    }
+                    
+                    // Clear URLs after processing
+                    setVideoUrls('');
                 }
-                
-                // Clear URLs after processing
-                setVideoUrls('');
+            } else if (sourceType === 'blob') {
+                // Handle blob storage imports
+                try {
+                    // Generate SAS URLs for selected blobs and import them
+                    const sasUrls = [];
+                    for (const blob of selectedBlobs) {
+                        try {
+                            const response = await fetch('/blob-storage/generate-sas', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    container_name: blob.container,
+                                    blob_name: blob.name,
+                                    expiry_hours: 24
+                                }),
+                            });
+
+                            if (response.ok) {
+                                const result = await response.json();
+                                sasUrls.push(result.sas_url);
+                            } else {
+                                console.error(`Failed to generate SAS URL for ${blob.name}`);
+                                failCount++;
+                            }
+                        } catch (error) {
+                            console.error(`Error generating SAS URL for ${blob.name}:`, error);
+                            failCount++;
+                        }
+                    }
+
+                    // Import blobs using the import API endpoint
+                    if (sasUrls.length > 0) {
+                        for (let i = 0; i < sasUrls.length; i++) {
+                            const sasUrl = sasUrls[i];
+                            const blob = selectedBlobs[i];
+                            const filename = blob.name.split('/').pop() || blob.name;
+
+                            try {
+                                const response = await fetch(`/libraries/${selectedUploadLibrary}/import-from-blob`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        blob_url: sasUrl
+                                    }),
+                                });
+
+                                if (!response.ok) {
+                                    throw new Error(`Import failed for ${filename}`);
+                                }
+
+                                const result = await response.json();
+                                
+                                // Add tasks to tracking
+                                for (const taskId of result.task_ids) {
+                                    addTask(taskId, filename, selectedUploadLibrary);
+                                }
+                                successCount++;
+
+                            } catch (error) {
+                                console.error(`Failed to import ${filename}:`, error);
+                                failCount++;
+                            }
+                        }
+                    }
+                    
+                    // Clear selected blobs after processing
+                    setSelectedBlobs([]);
+                } catch (error) {
+                    console.error('Error during blob import:', error);
+                    showMessage(`Error during blob import: ${error}`, MessageBarType.error);
+                    failCount = selectedBlobs.length;
+                }
             }
 
             // Clear library selection if desired
@@ -383,70 +472,86 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
 
                         {/* Upload Video Section */}
                         <div className={styles.actionCard}>
-                            <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
-                                <h4>Upload Video</h4>
-                            </Stack>
-                            <Stack tokens={{ childrenGap: 12 }}>
-                                {/* Upload Mode Selection */}
-                                <Dropdown
-                                    label="Upload Method"
-                                    options={[
-                                        { key: 'file', text: 'Upload Files (<2GB each)' },
-                                        { key: 'url', text: 'Upload from URLs (<30GB each)' }
-                                    ]}
-                                    selectedKey={uploadMode}
-                                    onChange={(_, item) => setUploadMode(item?.key as 'file' | 'url')}
-                                    disabled={isProcessing}
-                                />
-                                {uploadMode === 'file' ? (
-                                    <div className={styles.fileUploadArea}>
-                                        <input
-                                            type="file"
-                                            accept="video/*,.mp4,.mov,.avi,.mkv"
-                                            onChange={handleFileChange}
-                                            disabled={isProcessing}
-                                            id="video-upload"
-                                            className={styles.fileInput}
-                                            multiple
-                                        />
-                                        <label htmlFor="video-upload" className={styles.fileLabel}>
-                                            {selectedFiles.length > 0 ? (
-                                                <div>
-                                                    <strong>Files selected: {selectedFiles.length}</strong>
-                                                    <br />
-                                                    <small>
-                                                        {selectedFiles.map(f => f.name).join(', ')}
-                                                    </small>
-                                                    <br />
-                                                    <small>
-                                                        Total: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2)} MB
-                                                        {selectedFiles.some(f => f.size > 2 * 1024 * 1024 * 1024) && (
-                                                            <span style={{ color: 'red' }}> (Some files &gt; 2GB - use URL upload)</span>
-                                                        )}
-                                                    </small>
-                                                </div>
-                                            ) : (
-                                                <div>
-                                                    <strong>Click to select video files</strong>
-                                                    <br />
-                                                    <small>Supports: MP4, MOV, AVI, MKV (Max 2GB each, Multiple files allowed)</small>
-                                                </div>
-                                            )}
-                                        </label>
-                                    </div>
-                                ) : (
-                                    <TextField
-                                        label="Video URLs"
-                                        placeholder="Enter video URLs, one per line"
-                                        multiline
-                                        rows={4}
-                                        value={videoUrls}
-                                        onChange={(_, value) => setVideoUrls(value || '')}
+                            <UploadModeSelector
+                                selectedMode={sourceType}
+                                onModeChange={setSourceType}
+                            />
+                            
+                            {sourceType === 'local' && (
+                                <Stack tokens={{ childrenGap: 12 }} style={{ marginTop: 20 }}>
+                                    {/* Upload Method Selection for Local Files */}
+                                    <Dropdown
+                                        label="選擇上傳方式"
+                                        options={[
+                                            { key: 'file', text: '檔案上傳 (<2GB each)' },
+                                            { key: 'url', text: '網址上傳 (<30GB each)' }
+                                        ]}
+                                        selectedKey={uploadMode}
+                                        onChange={(_, item) => setUploadMode(item?.key as 'file' | 'url')}
                                         disabled={isProcessing}
-                                        description="Enter direct video file URLs (up to 30GB each). One URL per line."
                                     />
-                                )}
+                                    
+                                    {uploadMode === 'file' ? (
+                                        <div className={styles.fileUploadArea}>
+                                            <input
+                                                type="file"
+                                                accept="video/*,.mp4,.mov,.avi,.mkv"
+                                                onChange={handleFileChange}
+                                                disabled={isProcessing}
+                                                id="video-upload"
+                                                className={styles.fileInput}
+                                                multiple
+                                            />
+                                            <label htmlFor="video-upload" className={styles.fileLabel}>
+                                                {selectedFiles.length > 0 ? (
+                                                    <div>
+                                                        <strong>Files selected: {selectedFiles.length}</strong>
+                                                        <br />
+                                                        <small>
+                                                            {selectedFiles.map(f => f.name).join(', ')}
+                                                        </small>
+                                                        <br />
+                                                        <small>
+                                                            Total: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2)} MB
+                                                            {selectedFiles.some(f => f.size > 2 * 1024 * 1024 * 1024) && (
+                                                                <span style={{ color: 'red' }}> (Some files &gt; 2GB - use URL upload)</span>
+                                                            )}
+                                                        </small>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <strong>Click to select video files</strong>
+                                                        <br />
+                                                        <small>Supports: MP4, MOV, AVI, MKV (Max 2GB each, Multiple files allowed)</small>
+                                                    </div>
+                                                )}
+                                            </label>
+                                        </div>
+                                    ) : (
+                                        <TextField
+                                            label="Video URLs"
+                                            placeholder="Enter video URLs, one per line"
+                                            multiline
+                                            rows={4}
+                                            value={videoUrls}
+                                            onChange={(_, value) => setVideoUrls(value || '')}
+                                            disabled={isProcessing}
+                                            description="Enter direct video file URLs (up to 30GB each). One URL per line."
+                                        />
+                                    )}
+                                </Stack>
+                            )}
+                            
+                            {sourceType === 'blob' && (
+                                <div style={{ marginTop: 20 }}>
+                                    <BlobStorageBrowser
+                                        onSelectionChange={setSelectedBlobs}
+                                        multiSelect={true}
+                                    />
+                                </div>
+                            )}
 
+                            <Stack tokens={{ childrenGap: 12 }} style={{ marginTop: 20 }}>
                                 <Dropdown
                                     placeholder="Select destination library"
                                     options={indexes}
@@ -456,10 +561,24 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 />
 
                                 <PrimaryButton
-                                    text={isProcessing ? "Queuing..." : uploadMode === 'file' ? `Queue ${selectedFiles.length} Video(s)` : `Queue ${videoUrls.split('\n').filter(url => url.trim()).length} URL(s)`}
+                                    text={
+                                        isProcessing 
+                                            ? "Processing..." 
+                                            : sourceType === 'local'
+                                                ? (uploadMode === 'file' 
+                                                    ? `Queue ${selectedFiles.length} Video(s)` 
+                                                    : `Queue ${videoUrls.split('\n').filter(url => url.trim()).length} URL(s)`)
+                                                : `Import ${selectedBlobs.length} Video(s) from Blob Storage`
+                                    }
                                     onClick={handleUploadVideos}
-                                    disabled={(uploadMode === 'file' ? selectedFiles.length === 0 : !videoUrls.trim()) || !selectedUploadLibrary || isProcessing}
-                                    iconProps={{ iconName: isProcessing ? "Clock" : "Upload" }}
+                                    disabled={
+                                        isProcessing || 
+                                        !selectedUploadLibrary || 
+                                        (sourceType === 'local' 
+                                            ? (uploadMode === 'file' ? selectedFiles.length === 0 : !videoUrls.trim())
+                                            : selectedBlobs.length === 0)
+                                    }
+                                    iconProps={{ iconName: isProcessing ? "Clock" : (sourceType === 'blob' ? "CloudUpload" : "Upload") }}
                                 />
                             </Stack>
                         </div>

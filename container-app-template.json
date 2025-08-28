@@ -136,7 +136,13 @@
                         "external": true,
                         "targetPort": 5000,
                         "transport": "http",
-                        "allowInsecure": true
+                        "allowInsecure": false,
+                        "traffic": [
+                            {
+                                "weight": 100,
+                                "latestRevision": true
+                            }
+                        ]
                     }
                 },
                 "template": {

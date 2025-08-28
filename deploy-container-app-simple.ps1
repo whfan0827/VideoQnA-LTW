@@ -89,6 +89,7 @@ try {
         --image "$acrName.azurecr.io/videoqna-ltw:latest" `
         --target-port 5000 `
         --ingress external `
+        --transport http `
         --registry-server "$acrName.azurecr.io" `
         --registry-username $acrName `
         --registry-password $acrPassword `

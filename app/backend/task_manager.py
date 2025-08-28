@@ -35,6 +35,8 @@ class TaskInfo:
     file_path: Optional[str] = None
     retry_count: int = 0
     max_retries: int = 2
+    source_type: str = "local_file"
+    file_size_metadata: Optional[int] = None
     
     def to_dict(self):
         data = asdict(self)
@@ -118,7 +120,7 @@ class TaskManager:
         except Exception as e:
             logger.error(f"Failed to save task {task.task_id} to database: {e}")
     
-    def create_upload_task(self, filename: str, library_name: str, file_path: str) -> str:
+    def create_upload_task(self, filename: str, library_name: str, file_path: str, source_type: str = "local_file", file_size: int = None) -> str:
         """Create a new file upload task"""
         task_id = str(uuid.uuid4())
         
@@ -131,7 +133,9 @@ class TaskManager:
             filename=filename,
             library_name=library_name,
             file_path=file_path,
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            source_type=source_type,
+            file_size_metadata=file_size
         )
         
         with self.lock:
@@ -143,6 +147,16 @@ class TaskManager:
         
         logger.info(f"Created file upload task {task_id} for file '{filename}' in library '{library_name}' (queue position: {len(self.processing_queue)})")
         return task_id
+    
+    def create_blob_import_task(self, filename: str, blob_url: str, library_name: str, file_size: int = None) -> str:
+        """Create a new blob import task"""
+        return self.create_upload_task(
+            filename=filename,
+            library_name=library_name,
+            file_path=blob_url,
+            source_type="blob_storage",
+            file_size=file_size
+        )
     
     def create_url_upload_task(self, filename: str, library_name: str, video_url: str) -> str:
         """Create a new URL upload task"""
@@ -413,8 +427,19 @@ class TaskManager:
             self.current_processing -= 1
     
     def _process_video_upload(self, task_id: str):
-        """Process video upload task"""
+        """Process video upload task with enhanced timeout and error handling"""
         task = self.tasks[task_id]
+        
+        # Add timeout monitoring
+        import time
+        start_time = time.time()
+        max_processing_time = 7200  # 2 hours maximum processing time
+        
+        def check_timeout():
+            elapsed = time.time() - start_time
+            if elapsed > max_processing_time:
+                raise TimeoutError(f"Task processing timeout after {elapsed/60:.1f} minutes (max: {max_processing_time/60} minutes)")
+            return elapsed
         
         # Step 1: Initialize
         self.update_task_progress(task_id, 5, "Initializing video processing...")
@@ -507,7 +532,7 @@ class TaskManager:
                         scaled_progress = 70 + int((progress / 100) * 25)
                         self.update_task_progress(task_id, scaled_progress, step)
                     
-                    prepare_db_with_progress(
+                    videos_ids = prepare_db_with_progress(
                         db_name=task.library_name,
                         data_dir=DATA_DIR,
                         language_models=language_models,
@@ -515,12 +540,17 @@ class TaskManager:
                         single_video_file=task.file_path,
                         progress_callback=progress_callback,
                         verbose=True,
-                        use_videos_ids_cache=True  # Use cache for fast processing
+                        use_videos_ids_cache=True,  # Use cache for fast processing
+                        original_filename=task.filename
                     )
                     
                     # Save video record to target library database
                     file_size = 0
-                    if task.file_path and Path(task.file_path).exists():
+                    if hasattr(task, 'file_size_metadata') and task.file_size_metadata:
+                        # Use blob size metadata if available
+                        file_size = task.file_size_metadata
+                    elif task.file_path and Path(task.file_path).exists():
+                        # Use local file size for local files
                         file_size = Path(task.file_path).stat().st_size
                         
                     video_data = {
@@ -530,6 +560,10 @@ class TaskManager:
                         'video_id': cached_info['video_id'],
                         'status': 'indexed',
                         'file_size': file_size,
+                        'source_type': task.source_type,
+                        'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
+                        'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
+                        'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None
                     }
                     
                     db_manager.save_video_record(video_data)
@@ -551,33 +585,74 @@ class TaskManager:
         def progress_callback(step: str, progress: int):
             if task.status == TaskStatus.CANCELLED:
                 raise Exception("Task was cancelled")
+            
+            # Check for timeout during long processing
+            try:
+                elapsed = check_timeout()
+                # Add elapsed time info to progress updates during long waits
+                if progress == 30 and "waiting" in step.lower():
+                    step = f"{step} (elapsed: {elapsed/60:.1f}min)"
+            except TimeoutError as te:
+                logger.error(f"Timeout during progress callback: {te}")
+                raise te
+                
             self.update_task_progress(task_id, progress, step)
         
-        # Call the enhanced prepare_db function
+        # Call the enhanced prepare_db function with timeout monitoring
         logger.info(f"Starting video processing for task {task_id}")
-        prepare_db_with_progress(
-            db_name=task.library_name,
-            data_dir=DATA_DIR,
-            language_models=language_models,
-            prompt_content_db=prompt_content_db,
-            single_video_file=task.file_path,
-            progress_callback=progress_callback,
-            verbose=True,
-            use_videos_ids_cache=False
-        )
+        check_timeout()  # Check before starting heavy processing
+        
+        try:
+            videos_ids = prepare_db_with_progress(
+                db_name=task.library_name,
+                data_dir=DATA_DIR,
+                language_models=language_models,
+                prompt_content_db=prompt_content_db,
+                single_video_file=task.file_path,
+                progress_callback=progress_callback,
+                verbose=True,
+                use_videos_ids_cache=False,
+                original_filename=task.filename
+            )
+        except TimeoutError as te:
+            logger.error(f"Video processing timeout for task {task_id}: {te}")
+            raise te
+        except Exception as e:
+            elapsed = check_timeout()
+            logger.error(f"Video processing failed for task {task_id} after {elapsed/60:.1f} minutes: {e}")
+            raise e
+        
+        # Extract video_id from the results
+        video_id = None
+        if videos_ids and task.file_path in videos_ids:
+            video_id = videos_ids[task.file_path]
+            logger.info(f"Successfully obtained video_id: {video_id} for file: {task.filename}")
+        else:
+            logger.warning(f"No video_id returned for file: {task.filename}")
+            logger.debug(f"videos_ids returned: {videos_ids}")
+            logger.debug(f"Looking for file_path: {task.file_path}")
         
         # Save video record to database
         try:
             file_size = 0
-            if task.file_path and Path(task.file_path).exists():
+            if hasattr(task, 'file_size_metadata') and task.file_size_metadata:
+                # Use blob size metadata if available
+                file_size = task.file_size_metadata
+            elif task.file_path and Path(task.file_path).exists():
+                # Use local file size for local files
                 file_size = Path(task.file_path).stat().st_size
                 
             video_data = {
                 'filename': task.filename,
                 'original_path': task.file_path,
                 'library_name': task.library_name,
+                'video_id': video_id,  # This is the crucial missing piece!
                 'status': 'indexed',
                 'file_size': file_size,
+                'source_type': task.source_type,
+                'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
+                'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
+                'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
                 'indexed_at': datetime.now().isoformat()
             }
             db_manager.save_video_record(video_data)
@@ -694,7 +769,7 @@ class TaskManager:
     def _process_video_delete(self, task_id: str):
         """Process video deletion task"""
         task = self.tasks[task_id]
-        video_id = task.filename
+        filename = task.filename
         
         self.update_task_progress(task_id, 10, "Starting video deletion...")
         
@@ -724,40 +799,104 @@ class TaskManager:
                 # If vector database fails, continue without it
                 prompt_content_db = None
             
-            # Step 1: Remove from vector database
-            self.update_task_progress(task_id, 30, "Removing from vector database...")
-            if prompt_content_db is not None:
-                try:
-                    # Set the database to the correct library
-                    prompt_content_db.set_db(task.library_name)
-                    success = prompt_content_db.delete_video_documents(video_id)
-                    if success:
-                        logger.info(f"Successfully removed vector documents for {video_id}")
-                    else:
-                        logger.warning(f"No vector documents found for {video_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove vector documents: {e}")
-                    # Don't fail the entire task if vector deletion fails
-            else:
-                logger.warning("Vector database not available, skipping vector deletion")
+            # Step 1: Identify if filename is actually a video_id
+            self.update_task_progress(task_id, 20, "Looking up video information...")
+            real_video_id = None
+            actual_filename = None
             
-            # Step 2: Physically delete from database
-            self.update_task_progress(task_id, 70, "Physically deleting database records...")
+            # Check if the filename is actually a video_id (common case)
             library_variants = [
                 task.library_name,
                 task.library_name.replace('-instructions-', '-instruction-'),
                 task.library_name.replace('-instruction-', '-instructions-')
             ]
-            success = False
-            for lib_name in library_variants:
-                success = db_manager.delete_video_record(lib_name, video_id)
-                if success:
-                    logger.info(f"Physically deleted video using library name: {lib_name}")
-                    break
-            if not success:
-                raise Exception(f"Failed to physically delete video in database. Tried library names: {library_variants}")
             
-            # Step 3: Optional - Delete physical file (implement if needed)
+            # First, try to find by video_id (since filename might actually be video_id)
+            found_video = False
+            for lib_name in library_variants:
+                videos = db_manager.get_library_videos(lib_name)
+                for video in videos:
+                    if video.get('video_id') == filename:
+                        real_video_id = video.get('video_id')
+                        actual_filename = video.get('filename')
+                        print(f"Found video by video_id: {real_video_id}, filename: {actual_filename}")
+                        found_video = True
+                        break
+                    elif video.get('filename') == filename:
+                        real_video_id = video.get('video_id')  # This can be None
+                        actual_filename = video.get('filename')
+                        print(f"Found video by filename: {actual_filename}, video_id: {real_video_id}")
+                        found_video = True
+                        break
+                if found_video:
+                    break
+            
+            # Step 2: Remove from vector database
+            self.update_task_progress(task_id, 40, "Removing from vector database...")
+            if prompt_content_db is not None:
+                try:
+                    # Set the database to the correct library
+                    prompt_content_db.set_db(task.library_name)
+                    success = False
+                    
+                    if real_video_id:
+                        # Try deletion by video_id first
+                        success = prompt_content_db.delete_video_documents(real_video_id)
+                        if success:
+                            logger.info(f"Successfully removed vector documents for video '{filename}' (video_id: {real_video_id})")
+                        else:
+                            logger.warning(f"No vector documents found for video '{filename}' (video_id: {real_video_id})")
+                    
+                    if not success and hasattr(prompt_content_db, 'delete_video_documents_by_filename'):
+                        # Try deletion by filename if video_id deletion failed or no video_id
+                        success = prompt_content_db.delete_video_documents_by_filename(filename)
+                        if success:
+                            logger.info(f"Successfully removed vector documents for video '{filename}' by filename")
+                        else:
+                            logger.warning(f"No vector documents found for video '{filename}' by filename")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to remove vector documents for '{filename}': {e}")
+                    # Don't fail the entire task if vector deletion fails
+            else:
+                logger.warning("Vector database not available, skipping vector deletion")
+            
+            # Step 3: Physically delete from database
+            self.update_task_progress(task_id, 70, "Physically deleting database records...")
+            success = False
+            
+            # Only raise exception if we couldn't find the video at all
+            if not found_video:
+                raise Exception(f"Cannot delete video '{filename}' - not found in any library: {library_variants}")
+            
+            # Delete by video_id first (if available)
+            if real_video_id:
+                for lib_name in library_variants:
+                    success = db_manager.delete_video_record(lib_name, video_id=real_video_id)
+                    if success:
+                        logger.info(f"Successfully deleted video '{actual_filename or filename}' (video_id: {real_video_id}) from library '{lib_name}'")
+                        break
+                        
+            # Fallback: try delete by filename if video_id deletion failed or no video_id
+            if not success and actual_filename:
+                for lib_name in library_variants:
+                    success = db_manager.delete_video_record(lib_name, filename=actual_filename)
+                    if success:
+                        logger.info(f"Successfully deleted video '{actual_filename}' by filename from library '{lib_name}'")
+                        break
+            
+            # Final fallback: try delete by the original filename parameter
+            if not success:
+                for lib_name in library_variants:
+                    success = db_manager.delete_video_record(lib_name, filename=filename)
+                    if success:
+                        logger.info(f"Successfully deleted video '{filename}' by original filename from library '{lib_name}'")
+                        break
+            
+            if not success:
+                raise Exception(f"Failed to physically delete video '{actual_filename or filename}' (video_id: {real_video_id or 'None'}) in database. Tried library names: {library_variants}")
+            
+            # Step 4: Optional - Delete physical file (implement if needed)
             self.update_task_progress(task_id, 90, "Cleaning up files...")
             
             # Mark as completed
@@ -843,13 +982,54 @@ class TaskManager:
                         task.library_name.replace('-instruction-', '-instructions-')
                     ]
                     success = False
+                    
+                    # Find all matching video records across all libraries (to handle duplicates)
+                    matching_videos = []
                     for lib_name in library_variants:
-                        success = db_manager.delete_video_record(lib_name, video_id)
-                        if success:
-                            break
+                        videos = db_manager.get_library_videos(lib_name)
+                        for video in videos:
+                            if video.get('video_id') == video_id or video.get('filename') == video_id:
+                                matching_videos.append({
+                                    'library': lib_name,
+                                    'video_id': video.get('video_id'),
+                                    'filename': video.get('filename')
+                                })
+                    
+                    if matching_videos:
+                        deleted_any = False
+                        for match in matching_videos:
+                            lib_name = match['library']
+                            real_video_id = match['video_id']
+                            actual_filename = match['filename']
+                            local_success = False
+                            
+                            # Try deletion by video_id first (if available)
+                            if real_video_id:
+                                local_success = db_manager.delete_video_record(lib_name, video_id=real_video_id)
+                                if local_success:
+                                    logger.info(f"Batch delete: Successfully deleted {actual_filename} (video_id: {real_video_id}) from {lib_name}")
+                            
+                            # Fallback: try deletion by filename if video_id deletion failed or no video_id
+                            if not local_success and actual_filename:
+                                local_success = db_manager.delete_video_record(lib_name, filename=actual_filename)
+                                if local_success:
+                                    logger.info(f"Batch delete: Successfully deleted {actual_filename} by filename from {lib_name}")
+                            
+                            # Final fallback: try deletion by the original video_id parameter
+                            if not local_success:
+                                local_success = db_manager.delete_video_record(lib_name, filename=video_id)
+                                if local_success:
+                                    logger.info(f"Batch delete: Successfully deleted {video_id} by original parameter from {lib_name}")
+                            
+                            if local_success:
+                                deleted_any = True
+                        
+                        success = deleted_any
+                    
                     if success:
                         deleted_count += 1
                     else:
+                        logger.warning(f"Batch delete: Failed to delete {video_id} - not found or could not delete")
                         failed_videos.append(video_id)
                         
                 except Exception as e:
@@ -877,6 +1057,31 @@ class TaskManager:
             logger.error(f"Batch deletion failed: {e}")
             raise
     
+    def _extract_container_from_url(self, url: str) -> str:
+        """Extract container name from blob storage URL"""
+        if not url or 'blob.core.windows.net' not in url:
+            return None
+        try:
+            # URL format: https://account.blob.core.windows.net/container/blob/path?sas_token
+            parts = url.split('blob.core.windows.net/')[1].split('/')
+            return parts[0] if parts else None
+        except:
+            return None
+    
+    def _extract_blob_name_from_url(self, url: str) -> str:
+        """Extract blob name from blob storage URL"""
+        if not url or 'blob.core.windows.net' not in url:
+            return None
+        try:
+            # URL format: https://account.blob.core.windows.net/container/blob/path?sas_token
+            url_without_sas = url.split('?')[0]  # Remove SAS token
+            parts = url_without_sas.split('blob.core.windows.net/')[1].split('/')
+            if len(parts) > 1:
+                return '/'.join(parts[1:])  # Join all parts after container name
+            return None
+        except:
+            return None
+
     def _cleanup_old_tasks(self):
         """Clean up old completed/failed tasks (extended retention period)"""
         while not self.shutdown:

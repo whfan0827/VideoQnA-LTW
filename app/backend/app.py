@@ -461,6 +461,102 @@ def batch_delete_videos(library_name):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/libraries/<library_name>/cleanup-orphaned", methods=["POST"])
+def cleanup_orphaned_videos(library_name):
+    """Clean up orphaned video records that no longer exist in Azure Video Indexer"""
+    try:
+        from vi_search.vi_client.video_indexer_client import init_video_indexer_client
+        from dotenv import dotenv_values
+        from pathlib import Path
+        
+        # Get all videos in the library
+        videos = db_manager.get_library_videos(library_name)
+        if not videos:
+            return jsonify({"message": "No videos found in library", "orphaned": [], "total": 0}), 200
+        
+        # Initialize Video Indexer client
+        env_path = Path(__file__).parent / ".env"
+        config = dotenv_values(env_path)
+        client = init_video_indexer_client(config)
+        
+        orphaned_videos = []
+        checked_count = 0
+        
+        for video in videos:
+            video_id = video.get('video_id')
+            filename = video.get('filename', 'Unknown')
+            
+            if not video_id:
+                # No video_id means it's definitely orphaned
+                orphaned_videos.append({
+                    'id': video.get('id'),
+                    'filename': filename,
+                    'video_id': None,
+                    'reason': 'No video_id'
+                })
+                continue
+            
+            checked_count += 1
+            try:
+                # Check if video exists in Azure Video Indexer
+                client.is_video_processed(video_id)
+                # If no exception, video exists
+            except Exception as e:
+                error_str = str(e)
+                if "404" in error_str or "not found" in error_str.lower():
+                    orphaned_videos.append({
+                        'id': video.get('id'),
+                        'filename': filename,
+                        'video_id': video_id,
+                        'reason': 'Not found in Azure Video Indexer (404)'
+                    })
+                elif "400" in error_str:
+                    orphaned_videos.append({
+                        'id': video.get('id'),
+                        'filename': filename,
+                        'video_id': video_id,
+                        'reason': 'Invalid state in Azure Video Indexer (400)'
+                    })
+                # Other errors might be temporary, so don't mark as orphaned
+        
+        # Get option to actually delete
+        should_delete = request.json and request.json.get('delete', False)
+        
+        if should_delete and orphaned_videos:
+            deleted_count = 0
+            for orphaned in orphaned_videos:
+                try:
+                    if db_manager.delete_video_record(library_name, video_id=orphaned['video_id']):
+                        deleted_count += 1
+                        orphaned['deleted'] = True
+                    else:
+                        orphaned['deleted'] = False
+                        orphaned['delete_error'] = 'Database deletion failed'
+                except Exception as e:
+                    orphaned['deleted'] = False
+                    orphaned['delete_error'] = str(e)
+            
+            return jsonify({
+                "message": f"Cleanup completed. Deleted {deleted_count} orphaned records.",
+                "orphaned": orphaned_videos,
+                "total_checked": checked_count,
+                "total_orphaned": len(orphaned_videos),
+                "deleted": deleted_count
+            }), 200
+        else:
+            return jsonify({
+                "message": f"Found {len(orphaned_videos)} orphaned video records",
+                "orphaned": orphaned_videos,
+                "total_checked": checked_count,
+                "total_orphaned": len(orphaned_videos),
+                "note": "To actually delete these records, send POST with {\"delete\": true}"
+            }), 200
+        
+    except Exception as e:
+        logging.exception(f"Exception in cleanup orphaned videos")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/settings/<library_name>", methods=["GET"])
 def get_library_settings(library_name):
     """Get settings for a specific library"""
@@ -801,6 +897,214 @@ def get_tasks_history():
         
     except Exception as e:
         logging.exception("Exception in get tasks history")
+        return jsonify({"error": str(e)}), 500
+
+
+# Blob Storage API endpoints
+@app.route("/blob-storage/containers", methods=["GET"])
+def list_blob_containers():
+    """List all blob storage containers"""
+    try:
+        from services.blob_storage_service import get_blob_storage_service
+        blob_service = get_blob_storage_service()
+        containers = blob_service.list_containers()
+        
+        return jsonify({
+            "containers": containers,
+            "total": len(containers)
+        })
+        
+    except ImportError:
+        return jsonify({"error": "Azure Storage SDK not available"}), 501
+    except Exception as e:
+        logging.exception("Exception in list blob containers")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/blob-storage/containers/<container_name>/blobs", methods=["GET"])
+def list_container_blobs(container_name):
+    """List blobs in a specific container"""
+    try:
+        from services.blob_storage_service import get_blob_storage_service
+        blob_service = get_blob_storage_service()
+        
+        # Get query parameters
+        prefix = request.args.get('prefix')
+        pattern = request.args.get('pattern')
+        metadata_filter = request.args.get('metadata')
+        
+        if pattern:
+            blobs = blob_service.list_blobs_by_pattern(container_name, pattern)
+        elif metadata_filter:
+            try:
+                metadata_dict = json.loads(metadata_filter)
+                blobs = blob_service.list_blobs_by_metadata(container_name, metadata_dict)
+            except json.JSONDecodeError:
+                return jsonify({"error": "Invalid metadata filter JSON"}), 400
+        else:
+            blobs = blob_service.list_blobs(container_name, prefix)
+        
+        # Convert BlobInfo objects to dictionaries
+        blob_list = []
+        for blob in blobs:
+            blob_dict = {
+                'name': blob.name,
+                'container': blob.container,
+                'size': blob.size,
+                'last_modified': blob.last_modified.isoformat(),
+                'content_type': blob.content_type,
+                'md5_hash': blob.md5_hash,
+                'metadata': blob.metadata
+            }
+            blob_list.append(blob_dict)
+        
+        return jsonify({
+            "container": container_name,
+            "blobs": blob_list,
+            "total": len(blob_list)
+        })
+        
+    except ImportError:
+        return jsonify({"error": "Azure Storage SDK not available"}), 501
+    except Exception as e:
+        logging.exception("Exception in list container blobs")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/blob-storage/generate-sas", methods=["POST"])
+def generate_blob_sas():
+    """Generate SAS URL for a blob"""
+    try:
+        from services.blob_storage_service import get_blob_storage_service
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        container_name = data.get('container_name')
+        blob_name = data.get('blob_name')
+        expiry_hours = data.get('expiry_hours', 24)
+        
+        if not container_name or not blob_name:
+            return jsonify({"error": "container_name and blob_name are required"}), 400
+        
+        blob_service = get_blob_storage_service()
+        sas_url = blob_service.generate_sas_url(container_name, blob_name, expiry_hours)
+        
+        return jsonify({
+            "sas_url": sas_url,
+            "container": container_name,
+            "blob": blob_name,
+            "expires_in_hours": expiry_hours
+        })
+        
+    except ImportError:
+        return jsonify({"error": "Azure Storage SDK not available"}), 501
+    except Exception as e:
+        logging.exception("Exception in generate blob SAS")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/<library_name>/import-from-blob", methods=["POST"])
+def import_from_blob(library_name):
+    """Import videos from Azure Blob Storage into a library"""
+    try:
+        from services.blob_storage_service import get_blob_storage_service
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Check if library exists
+        available_dbs = prompt_content_db.get_available_dbs()
+        if library_name not in available_dbs:
+            return jsonify({"error": f"Library '{library_name}' not found"}), 404
+        
+        blob_service = get_blob_storage_service()
+        task_ids = []
+        
+        # Handle different import modes
+        if 'blob_url' in data:
+            # Single blob URL
+            blob_url = data['blob_url']
+            blob_info = blob_service.extract_blob_info_from_url(blob_url)
+            blob_name = blob_info['blob_name']
+            container_name = blob_info['container']
+            filename = blob_name.split('/')[-1]  # Extract filename from path
+            
+            # Get blob details to retrieve file size
+            blobs = blob_service.list_blobs(container_name, prefix=blob_name)
+            file_size = None
+            if blobs:
+                matching_blob = next((b for b in blobs if b.name == blob_name), None)
+                if matching_blob:
+                    file_size = matching_blob.size
+            
+            task_id = task_manager.create_blob_import_task(filename, blob_url, library_name, file_size)
+            task_ids.append(task_id)
+            
+        elif 'blob_path' in data:
+            # Pattern-based selection
+            container_name = data.get('container_name', 'videoqna-videos')
+            pattern = data['blob_path']
+            
+            blobs = blob_service.list_blobs_by_pattern(container_name, pattern)
+            for blob in blobs:
+                sas_url = blob_service.generate_sas_url(container_name, blob.name)
+                filename = blob.name.split('/')[-1]  # Extract filename from path
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size)
+                task_ids.append(task_id)
+                
+        elif 'blob_metadata' in data:
+            # Metadata-based selection
+            container_name = data.get('container_name', 'videoqna-videos')
+            metadata_filter = data['blob_metadata']
+            
+            blobs = blob_service.list_blobs_by_metadata(container_name, metadata_filter)
+            for blob in blobs:
+                sas_url = blob_service.generate_sas_url(container_name, blob.name)
+                filename = blob.name.split('/')[-1]  # Extract filename from path
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size)
+                task_ids.append(task_id)
+                
+        elif 'blob_list' in data:
+            # Explicit blob list - supports both string array and object array formats
+            blob_list = data['blob_list']
+            
+            for blob_item in blob_list:
+                # Handle both string format and object format
+                if isinstance(blob_item, dict):
+                    container_name = blob_item.get('container_name', data.get('container_name', 'videoqna-videos'))
+                    blob_name = blob_item.get('blob_name')
+                else:
+                    # String format
+                    container_name = data.get('container_name', 'videoqna-videos')
+                    blob_name = blob_item
+                
+                if not blob_name:
+                    continue
+                    
+                # Get blob size for explicit blob list
+                blob_info = blob_service.get_blob_properties(container_name, blob_name)
+                file_size = blob_info.size if blob_info else None
+                
+                sas_url = blob_service.generate_sas_url(container_name, blob_name)
+                filename = blob_name.split('/')[-1]  # Extract filename from path
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, file_size)
+                task_ids.append(task_id)
+        else:
+            return jsonify({"error": "No valid import method specified. Use one of: blob_url, blob_path, blob_metadata, blob_list"}), 400
+        
+        return jsonify({
+            "task_ids": task_ids,
+            "total_videos": len(task_ids),
+            "message": f"Started importing {len(task_ids)} videos from blob storage into library '{library_name}'"
+        }), 202  # HTTP 202 Accepted
+        
+    except ImportError:
+        return jsonify({"error": "Azure Storage SDK not available"}), 501
+    except Exception as e:
+        logging.exception("Exception in import from blob")
         return jsonify({"error": str(e)}), 500
 
 

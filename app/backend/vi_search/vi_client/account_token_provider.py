@@ -29,11 +29,18 @@ class TokenCache:
         """Get cached tokens if they are still valid"""
         current_consts_hash = self._get_consts_hash(consts)
         
+        # Add 5-minute buffer to prevent edge cases where tokens expire during processing
+        now_with_buffer = datetime.now() + timedelta(minutes=5)
+        
         if (self.arm_token and self.vi_token and 
-            self.token_expires_at and self.token_expires_at > datetime.now() and
+            self.token_expires_at and self.token_expires_at > now_with_buffer and
             self.consts_hash == current_consts_hash):
-            print("Using cached Azure tokens")
+            print(f"Using cached Azure tokens (expires at: {self.token_expires_at})")
             return self.arm_token, self.vi_token
+        
+        if self.token_expires_at and self.token_expires_at <= now_with_buffer:
+            print(f"Cached tokens expired or expiring soon (expires: {self.token_expires_at}, now+buffer: {now_with_buffer})")
+        
         return None, None
     
     def cache_tokens(self, consts, arm_token, vi_token, expires_in_seconds=3600):
@@ -69,25 +76,25 @@ class GlobalSessionManager:
 def get_arm_access_token(consts:Consts) -> str:
     '''
     Get an access token for the Azure Resource Manager
-    使用 Service Principal 或 DefaultAzureCredential 進行認證
+    Uses Service Principal or DefaultAzureCredential for authentication
 
     :param consts: Consts object
     :return: Access token for the Azure Resource Manager
     '''
-    # 優先使用 Service Principal 認證
+    # Prefer Service Principal authentication
     client_id = os.getenv('AZURE_CLIENT_ID')
     client_secret = os.getenv('AZURE_CLIENT_SECRET')
     tenant_id = os.getenv('AZURE_TENANT_ID')
     
     if client_id and client_secret and tenant_id:
-        print("使用 Service Principal 進行認證...")
+        print("Using Service Principal authentication...")
         credential = ClientSecretCredential(
             tenant_id=tenant_id,
             client_id=client_id,
             client_secret=client_secret
         )
     else:
-        print("使用 Default Azure Credential 進行認證...")
+        print("Using Default Azure Credential authentication...")
         credential = DefaultAzureCredential()
     
     scope = f"{consts.AzureResourceManager}/.default"
@@ -141,7 +148,7 @@ def get_account_access_token_async(consts, arm_access_token, permission_type='Co
                 print("Successfully obtained Video Indexer access token")
                 return access_token
             elif response.status_code == 409:
-                # 檢查是否為 ReadOnlyDisabledSubscription
+                # Check if it's ReadOnlyDisabledSubscription
                 try:
                     error_json = response.json()
                     if "ReadOnlyDisabledSubscription" in error_json.get("error", {}).get("code", ""):

@@ -175,8 +175,9 @@ class VideoDatabase:
                 conn.execute("""
                     INSERT OR REPLACE INTO video_index 
                     (filename, original_path, library_name, video_id, status, 
-                     file_size, duration, created_at, indexed_at, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     file_size, duration, created_at, indexed_at, metadata,
+                     source_type, blob_url, blob_container, blob_name, blob_metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     video_data.get('filename'),
@@ -186,9 +187,14 @@ class VideoDatabase:
                     video_data.get('status', 'indexed'),
                     video_data.get('file_size'),
                     video_data.get('duration'),
-                    video_data.get('created_at', current_time),  # 確保always有created_at
-                    video_data.get('indexed_at', current_time),  # 確保always有indexed_at
-                    json.dumps(video_data.get('metadata', {}))
+                    video_data.get('created_at', current_time),
+                    video_data.get('indexed_at', current_time),
+                    json.dumps(video_data.get('metadata', {})),
+                    video_data.get('source_type', 'local_file'),
+                    video_data.get('blob_url'),
+                    video_data.get('blob_container'),
+                    video_data.get('blob_name'),
+                    json.dumps(video_data.get('blob_metadata', {})) if video_data.get('blob_metadata') else None
                 ))
                 conn.commit()
                 return True

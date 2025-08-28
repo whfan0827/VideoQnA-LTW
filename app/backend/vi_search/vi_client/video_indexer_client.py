@@ -33,7 +33,7 @@ from .account_token_provider import get_arm_access_token, get_account_access_tok
 
 
 def auto_retry_auth(max_retries=2):
-    """Decorator: Automatically retry requests that fail due to authentication or connection issues"""
+    """Simplified decorator: Only retry clear connection resets and auth errors"""
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -41,27 +41,27 @@ def auto_retry_auth(max_retries=2):
             for attempt in range(max_retries + 1):
                 try:
                     return func(self, *args, **kwargs)
-                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                    # Handle connection errors with exponential backoff
-                    if attempt < max_retries:
-                        wait_time = 2 ** attempt
-                        print(f"Connection error, retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                except requests.exceptions.ConnectionError as e:
+                    # Only retry on connection reset (10054) errors  
+                    if attempt < max_retries and "10054" in str(e):
+                        wait_time = 5  # Fixed 5 second delay instead of exponential backoff
+                        print(f"Connection reset detected, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries + 1})")
                         time.sleep(wait_time)
                     else:
-                        print(f"Connection failed after {max_retries + 1} attempts: {e}")
+                        print(f"Connection error after {max_retries + 1} attempts: {e}")
                         raise e
-                except (requests.exceptions.HTTPError, Exception) as e:
-                    if attempt < max_retries and (
-                        "401" in str(e) or "403" in str(e) or "Unauthorized" in str(e) or "token" in str(e).lower()
-                    ):
-                        print(f"Authentication failed, re-authenticating... (attempt {attempt + 1}/{max_retries + 1})")
+                except requests.exceptions.HTTPError as e:
+                    # Only retry 401/403 errors with re-authentication
+                    if attempt < max_retries and e.response.status_code in [401, 403]:
+                        print(f"Authentication error (HTTP {e.response.status_code}), re-authenticating... (attempt {attempt + 1}/{max_retries + 1})")
                         try:
                             self.re_authenticate()
+                            time.sleep(2)  # Brief pause after re-auth
                         except Exception as auth_error:
                             print(f"Re-authentication failed: {auth_error}")
-                            if attempt == max_retries:
-                                raise e
+                            raise e
                     else:
+                        # Don't retry other HTTP errors - let them surface immediately
                         raise e
             return None
         return wrapper
@@ -333,20 +333,49 @@ class VideoIndexerClient:
                 print(f'File {media_path} already exists. Video ID {video_id}. Skipping upload...')
                 return video_id
 
-        response.raise_for_status()
-
-        if response.status_code == 429:
+        # Enhanced error handling with detailed diagnostics
+        if response.status_code == 200:
+            video_id = response.json().get('id')
+            print(f'Successfully uploaded file {media_path.name} ({file_size_mb:.1f} MB) -> video_id: {video_id}')
+            return video_id
+        elif response.status_code == 429:
             raise Exception("Rate limit exceeded (429). Too many requests to Azure Video Indexer API.")
-        elif response.status_code != 200:
-            print(f'Request failed with status code: {response.status_code}')
-            if response.status_code == 413:
-                raise Exception("File too large (413). Use URL upload for files > 2GB.")
-            elif response.status_code >= 500:
-                raise Exception(f"Server error ({response.status_code}). Please retry later.")
-
-        video_id = response.json().get('id')
-
-        return video_id
+        elif response.status_code == 413:
+            raise Exception(f"File too large (413) - {file_size_mb:.1f} MB. Use URL upload for files > 2GB.")
+        elif response.status_code >= 500:
+            error_details = ""
+            try:
+                error_response = response.json()
+                error_details = f" Response: {error_response}"
+            except:
+                error_details = f" Response text: {response.text[:200]}..."
+            raise Exception(f"Server error ({response.status_code}){error_details}. Please retry later.")
+        elif response.status_code >= 400:
+            # Client errors - try to get more details
+            error_details = ""
+            try:
+                error_response = response.json()
+                if 'message' in error_response:
+                    error_details = f" Message: {error_response['message']}"
+                elif 'Message' in error_response:
+                    error_details = f" Message: {error_response['Message']}"
+                else:
+                    error_details = f" Response: {error_response}"
+            except:
+                error_details = f" Response text: {response.text[:200]}..."
+            
+            raise Exception(f"Upload failed ({response.status_code}){error_details}")
+        else:
+            # Unexpected success code
+            print(f'Unexpected response code {response.status_code} for file upload')
+            try:
+                video_id = response.json().get('id')
+                if video_id:
+                    return video_id
+                else:
+                    raise Exception(f"No video ID in response despite status {response.status_code}")
+            except:
+                raise Exception(f"Cannot parse response for status {response.status_code}: {response.text[:200]}...")
 
     def wait_for_index_async(self, video_id: str, language: str = 'English', timeout_sec: Optional[int] = None) -> None:
         '''
@@ -412,13 +441,51 @@ class VideoIndexerClient:
         params = {
             'accessToken': self.vi_access_token,
         }
-        response = requests.get(url, params=params)
-        response.raise_for_status()
+        
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
 
-        video_result = response.json()
-        video_state = video_result.get('state')
-
-        return video_state == 'Processed'
+            video_result = response.json()
+            video_state = video_result.get('state')
+            
+            # Log the actual state for debugging
+            print(f"Video {video_id} current state: {video_state}")
+            
+            # Handle different states
+            if video_state == 'Processed':
+                return True
+            elif video_state in ['Failed', 'Unavailable']:
+                print(f"Video {video_id} is in a failed/unavailable state: {video_state}")
+                
+                # Try to get more detailed error information
+                failure_details = ""
+                if 'failures' in video_result:
+                    failure_details = f" Failures: {video_result['failures']}"
+                elif 'processingProgress' in video_result:
+                    failure_details = f" Progress: {video_result['processingProgress']}"
+                elif 'state' in video_result and isinstance(video_result, dict):
+                    # Show additional fields that might give clues
+                    relevant_fields = {k: v for k, v in video_result.items() 
+                                     if k in ['created', 'lastModified', 'processingProgress', 'failures', 'insights']}
+                    if relevant_fields:
+                        failure_details = f" Additional info: {relevant_fields}"
+                
+                error_msg = f"Video processing failed or unavailable (state: {video_state}){failure_details}"
+                print(f"Detailed error for {video_id}: {error_msg}")
+                raise Exception(error_msg)
+            else:
+                # Still processing (Uploaded, Processing, etc.)
+                return False
+                
+        except requests.exceptions.HTTPError as e:
+            # Re-raise HTTP errors with more context
+            if e.response.status_code == 404:
+                raise Exception(f"Video {video_id} not found (404). It may have been deleted or expired.")
+            elif e.response.status_code == 400:
+                raise Exception(f"Video {video_id} returned Bad Request (400). The video may be in an invalid state.")
+            else:
+                raise e
 
     def get_video_async(self, video_id: str) -> dict:
         '''
@@ -505,7 +572,13 @@ class VideoIndexerClient:
         }
 
         response = requests.get(url, params=params)
+        
+        # Handle various error conditions
         if not raise_on_not_found and response.status_code == 404:
+            print(f"Prompt content not found for video {video_id} (404)")
+            return None
+        elif not raise_on_not_found and response.status_code == 400:
+            print(f"Prompt content not available for video {video_id} (400 Bad Request). Video may be in an invalid state.")
             return None
 
         response.raise_for_status()
@@ -579,8 +652,46 @@ class VideoIndexerClient:
                     videos_ids.remove(video_id)
 
         # Initiate prompt content generation for the remaining videos
-        for video_id in videos_ids:
-            self.generate_prompt_content_async(video_id)
+        # First filter out videos that are in Failed/Unavailable state
+        valid_videos_for_generation = []
+        for video_id in videos_ids[:]:
+            try:
+                # Check video status before trying to generate PromptContent
+                video_info = self.get_video_async(video_id)
+                video_state = video_info.get('state', 'Unknown') if video_info else 'Unknown'
+                
+                if video_state in ['Failed', 'Unavailable']:
+                    print(f'Skipping PromptContent generation for video {video_id} - state: {video_state}')
+                    videos_ids.remove(video_id)  # Remove from the list to avoid waiting for it
+                    continue
+                elif video_state != 'Processed':
+                    print(f'Video {video_id} is not yet processed (state: {video_state}), will retry later')
+                    # Keep it in the list for later retry, but don't try to generate content yet
+                    continue
+                else:
+                    # Video is processed, safe to generate content
+                    valid_videos_for_generation.append(video_id)
+                    
+            except Exception as e:
+                print(f'Error checking video status for {video_id}: {e}')
+                if "404" in str(e) or "not found" in str(e).lower():
+                    print(f'Video {video_id} not found, removing from list')
+                    videos_ids.remove(video_id)
+                    continue
+                else:
+                    # For other errors, assume video might be valid and try generation
+                    valid_videos_for_generation.append(video_id)
+        
+        # Only generate content for videos that are confirmed to be processed
+        for video_id in valid_videos_for_generation:
+            try:
+                self.generate_prompt_content_async(video_id)
+            except Exception as e:
+                print(f'Error initiating PromptContent generation for {video_id}: {e}')
+                if "400" in str(e) or "Bad Request" in str(e):
+                    print(f'Cannot generate PromptContent for {video_id} - removing from waiting list')
+                    if video_id in videos_ids:
+                        videos_ids.remove(video_id)
 
         start_time = time.time()
         while videos_ids:

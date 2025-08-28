@@ -73,28 +73,90 @@ class FileHashCache:
             logger.error(f"Failed to hash file {file_path}: {e}")
             raise
 
-    def get_cached_video_info(self, file_path: Path) -> Optional[dict]:
+    def get_cached_video_info(self, file_path: Path, validate_with_azure: bool = True) -> Optional[dict]:
         """
         Check if this file (by content hash) has already been processed
         
         Args:
             file_path: Path to the video file
+            validate_with_azure: If True, verify the cached video_id exists in Azure Video Indexer
             
         Returns:
-            dict with video_id and metadata if found, None if not cached
+            dict with video_id and metadata if found, None if not cached or invalid
         """
         try:
             file_hash = self.get_file_hash(file_path)
             cached_info = self.cache.get(file_hash)
             
             if cached_info:
-                logger.info(f"Found cached entry for {file_path.name} -> video_id: {cached_info['video_id']}")
-                return cached_info
+                video_id = cached_info['video_id']
+                logger.info(f"Found cached entry for {file_path.name} -> video_id: {video_id}")
+                
+                # Validate with Azure Video Indexer if requested
+                if validate_with_azure:
+                    if self._validate_video_id_exists(video_id):
+                        logger.info(f"Cached video_id {video_id} verified in Azure Video Indexer")
+                        return cached_info
+                    else:
+                        logger.warning(f"Cached video_id {video_id} not found in Azure Video Indexer - invalidating cache entry")
+                        # Remove the invalid cache entry
+                        del self.cache[file_hash]
+                        self._save_cache()
+                        return None
+                else:
+                    # Return cached info without validation
+                    return cached_info
                 
         except Exception as e:
             logger.error(f"Error checking cache for {file_path}: {e}")
             
         return None
+    
+    def _validate_video_id_exists(self, video_id: str) -> bool:
+        """
+        Validate that a video_id exists in Azure Video Indexer
+        
+        Args:
+            video_id: The video ID to validate
+            
+        Returns:
+            True if video exists, False otherwise
+        """
+        try:
+            # Import here to avoid circular dependencies
+            from vi_search.vi_client.video_indexer_client import init_video_indexer_client
+            from dotenv import load_dotenv
+            import os
+            
+            # Load environment variables
+            load_dotenv()
+            
+            # Create config from environment variables
+            config = {
+                'AccountName': os.getenv('AccountName'),
+                'ResourceGroup': os.getenv('ResourceGroup'), 
+                'SubscriptionId': os.getenv('SubscriptionId'),
+                'AZURE_CLIENT_ID': os.getenv('AZURE_CLIENT_ID'),
+                'AZURE_CLIENT_SECRET': os.getenv('AZURE_CLIENT_SECRET'),
+                'AZURE_TENANT_ID': os.getenv('AZURE_TENANT_ID')
+            }
+            
+            client = init_video_indexer_client(config)
+            
+            # Try to get video info - if successful, video exists
+            video_info = client.get_video_async(video_id)
+            return video_info is not None
+            
+        except Exception as e:
+            # If we get a 404 or similar error, video doesn't exist
+            if '404' in str(e) or 'not found' in str(e).lower():
+                logger.debug(f"Video {video_id} not found in Azure Video Indexer: {e}")
+                return False
+            else:
+                # For other errors (network issues, auth problems), assume video exists
+                # to avoid false negatives due to temporary issues
+                logger.warning(f"Could not validate video {video_id} due to error: {e}")
+                return True
 
     def cache_video_info(self, file_path: Path, video_id: str, library_name: str = "", 
                         additional_info: dict = None):
