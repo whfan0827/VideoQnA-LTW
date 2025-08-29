@@ -76,32 +76,53 @@ class AzureVectorSearch(PromptContentDB):
         self.db_handle = search_client
 
     def remove_db(self, name: str) -> None:
-        ''' Removes index.
+        ''' Removes index completely.
 
         :param name: The name of the index
         '''
+        logger.info(f"Removing search index '{name}' completely")
 
-        video_id = None  # The functional actually supports removing sections by video_id, but we don't use it
-        logger.info(f"Removing sections from '{video_id or '<all>'}' from search index '{name}'")
+        try:
+            # Check if index exists
+            available_indexes = self.get_available_dbs()
+            if name not in available_indexes:
+                logger.warning(f"Index '{name}' not found in available indexes: {available_indexes}")
+                return
 
-        search_client = self._get_search_client(name)
+            # Delete the entire index
+            self._index_client.delete_index(name)
+            logger.info(f"Successfully deleted search index '{name}'")
+            
+        except Exception as e:
+            logger.error(f"Failed to delete index '{name}': {e}")
+            # Fallback to clearing documents if index deletion fails
+            logger.info(f"Falling back to clearing documents from index '{name}'")
+            
+            try:
+                search_client = self._get_search_client(name)
+                total_count = 0
+                
+                while True:
+                    r = search_client.search("", top=1000, include_total_count=True)
+                    if r.get_count() == 0:
+                        break
 
-        total_count = 0
-        while True:
-            filter_ = None if video_id == None else f"video_id eq '{video_id}'"
-            r = search_client.search("", filter=filter_, top=1000, include_total_count=True)
-            if r.get_count() == 0:
-                break
+                    documents_to_delete = [{"id": d["id"]} for d in r]
+                    if not documents_to_delete:
+                        break
+                        
+                    r = search_client.delete_documents(documents=documents_to_delete)
+                    logger.info(f"\tRemoved {len(r)} sections from index")
+                    total_count += len(r)
 
-            r = search_client.delete_documents(documents=[{"id": d["id"]} for d in r])
-            logger.info(f"\tRemoved {len(r)} sections from index")
+                    # Wait for changes to be reflected
+                    time.sleep(2)
 
-            total_count += len(r)
-
-            # It can take a few seconds for search results to reflect changes, so wait a bit
-            time.sleep(2)
-
-        logger.info(f"Done removing sections from index. Total removed: {total_count}")
+                logger.info(f"Done clearing documents from index. Total removed: {total_count}")
+                
+            except Exception as fallback_error:
+                logger.error(f"Fallback document clearing also failed: {fallback_error}")
+                raise
 
     def get_available_dbs(self) -> list[str]:
         ''' Get the list of available search indexes. '''

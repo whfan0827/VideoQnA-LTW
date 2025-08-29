@@ -17,18 +17,20 @@ def configure_security(app):
          allow_headers=['Content-Type', 'Authorization'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
     
-    # Security headers with Talisman - CSP optimized for Fluent UI
+    # Security headers with Talisman - CSP optimized for Fluent UI and Video Indexer
     csp = {
         'default-src': "'self'",
         'script-src': [
             "'self'",
             "'unsafe-inline'",  # Needed for Fluent UI and React
             'https://cdn.jsdelivr.net',
+            'https://www.videoindexer.ai',  # Video Indexer embed scripts
         ],
         'style-src': [
             "'self'",
             "'unsafe-inline'",  # Needed for Fluent UI dynamic styles
             'https://fonts.googleapis.com',
+            'https://www.videoindexer.ai',  # Video Indexer styles
         ],
         'font-src': [
             "'self'",
@@ -43,10 +45,15 @@ def configure_security(app):
             "'self'",
             'https://*.azure.com',
             'https://*.openai.azure.com',
+            'https://www.videoindexer.ai',  # Video Indexer API calls
         ],
         'media-src': [
             "'self'",
             'https:',  # Allow external video sources
+        ],
+        'frame-src': [
+            "'self'",
+            'https://www.videoindexer.ai',  # Allow Video Indexer iframe embeds
         ],
     }
     
