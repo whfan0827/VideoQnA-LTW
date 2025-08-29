@@ -6,10 +6,13 @@ Handles blob operations including listing, SAS URL generation, and metadata mana
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from urllib.parse import urlparse
-import json
+
+if TYPE_CHECKING:
+    from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+    from azure.core.exceptions import AzureError
 
 try:
     from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
@@ -18,6 +21,12 @@ try:
 except ImportError:
     AZURE_AVAILABLE = False
     logging.warning("Azure Storage SDK not available. Blob storage features will be disabled.")
+    
+    # Define placeholder for runtime when Azure SDK is not available
+    BlobServiceClient = None  # type: ignore
+    AzureError = Exception  # type: ignore
+    generate_blob_sas = lambda *args, **kwargs: ""  # type: ignore
+    BlobSasPermissions = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +39,7 @@ class BlobInfo:
     last_modified: datetime
     content_type: str
     md5_hash: Optional[str] = None
-    metadata: Dict[str, str] = None
+    metadata: Optional[Dict[str, str]] = None
     
     def __post_init__(self):
         if self.metadata is None:
@@ -53,10 +62,10 @@ class BlobStorageService:
         
         try:
             if self.connection_string:
-                self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+                self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)  # type: ignore
             else:
                 account_url = f"https://{self.account_name}.blob.core.windows.net"
-                self.blob_service_client = BlobServiceClient(account_url, credential=self.account_key)
+                self.blob_service_client = BlobServiceClient(account_url, credential=self.account_key)  # type: ignore
                 
             logger.info(f"Initialized blob storage service for account: {self.account_name}")
         except Exception as e:
@@ -74,7 +83,7 @@ class BlobStorageService:
             logger.error(f"Failed to list containers: {e}")
             return []
     
-    def list_blobs(self, container_name: str, prefix: str = None) -> List[BlobInfo]:
+    def list_blobs(self, container_name: str, prefix: Optional[str] = None) -> List[BlobInfo]:
         """
         List blobs in a container.
         
@@ -86,7 +95,7 @@ class BlobStorageService:
             List of BlobInfo objects
         """
         try:
-            container_client = self.blob_service_client.get_container_client(container_name)
+            container_client = self.blob_service_client.get_container_client(container_name)  # type: ignore
             blobs = []
             
             for blob in container_client.list_blobs(name_starts_with=prefix, include=['metadata']):
@@ -97,7 +106,7 @@ class BlobStorageService:
                         container=container_name,
                         size=blob.size,
                         last_modified=blob.last_modified,
-                        content_type=blob.content_settings.content_type if blob.content_settings else 'unknown',
+                        content_type=blob.content_settings.content_type if blob.content_settings and blob.content_settings.content_type else 'unknown',
                         md5_hash=blob.content_settings.content_md5.hex() if blob.content_settings and blob.content_settings.content_md5 else None,
                         metadata=blob.metadata or {}
                     )
@@ -145,7 +154,7 @@ class BlobStorageService:
         matching_blobs = []
         
         for blob in all_blobs:
-            if self._metadata_matches(blob.metadata, metadata_filter):
+            if self._metadata_matches(blob.metadata or {}, metadata_filter):
                 matching_blobs.append(blob)
         
         return matching_blobs
@@ -163,17 +172,18 @@ class BlobStorageService:
             SAS URL string
         """
         try:
-            expiry_time = datetime.utcnow() + timedelta(hours=expiry_hours)
+            from datetime import timezone
+            expiry_time = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
             
             # Ensure blob_name uses forward slashes for URL compatibility
             normalized_blob_name = str(blob_name).replace('\\', '/')
             
             sas_token = generate_blob_sas(
-                account_name=self.account_name,
+                account_name=self.account_name or '',
                 container_name=container_name,
                 blob_name=normalized_blob_name,
                 account_key=self.account_key,
-                permission=BlobSasPermissions(read=True),
+                permission=BlobSasPermissions(read=True),  # type: ignore
                 expiry=expiry_time
             )
             
@@ -199,7 +209,7 @@ class BlobStorageService:
             BlobInfo object or None if blob not found
         """
         try:
-            blob_client = self.blob_service_client.get_blob_client(
+            blob_client = self.blob_service_client.get_blob_client(  # type: ignore
                 container=container_name, 
                 blob=blob_name
             )
@@ -211,7 +221,7 @@ class BlobStorageService:
                 container=container_name,
                 size=properties.size,
                 last_modified=properties.last_modified,
-                content_type=properties.content_settings.content_type if properties.content_settings else 'unknown',
+                content_type=properties.content_settings.content_type if properties.content_settings and properties.content_settings.content_type else 'unknown',
                 md5_hash=properties.content_settings.content_md5.hex() if properties.content_settings and properties.content_settings.content_md5 else None,
                 metadata=properties.metadata or {}
             )
@@ -220,7 +230,7 @@ class BlobStorageService:
             logger.error(f"Failed to get properties for '{blob_name}': {e}")
             return None
     
-    def extract_blob_info_from_url(self, blob_url: str) -> Dict[str, str]:
+    def extract_blob_info_from_url(self, blob_url: str) -> Dict[str, Optional[str]]:
         """
         Extract container and blob name from a blob URL.
         
@@ -241,7 +251,7 @@ class BlobStorageService:
             blob_name = '/'.join(path_parts[1:])
             
             # Extract account name from hostname
-            hostname_parts = parsed_url.hostname.split('.')
+            hostname_parts = parsed_url.hostname.split('.') if parsed_url.hostname else []
             account_name = hostname_parts[0] if hostname_parts else None
             
             return {
