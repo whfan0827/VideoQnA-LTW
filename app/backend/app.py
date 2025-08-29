@@ -101,7 +101,7 @@ settings_service = SettingsService()
 # Initialize AI template service
 ai_template_service = AITemplateService()
 
-app = Flask(__name__, static_folder='static', static_url_path='/')
+app = Flask(__name__, static_folder='static', static_url_path='')
 
 # Apply security configuration
 app = configure_security(app)
@@ -132,10 +132,17 @@ ASK_RATE_LIMIT_PER_DAY = 1000
 ASK_RATE_LIMIT_PER_MIN = 50
 
 
-@app.route("/", defaults={"path": "index.html"})
-@app.route("/<path:path>")
-def static_file(path):
-    return app.send_static_file(path)
+@app.route("/")
+def index():
+    return app.send_static_file('index.html')
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return app.send_static_file(f'assets/{filename}')
+
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file('favicon.ico')
 
 
 @app.route("/ask", methods=["POST"])

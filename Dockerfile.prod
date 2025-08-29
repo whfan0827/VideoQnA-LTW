@@ -4,9 +4,11 @@ FROM node:18-alpine AS frontend-builder
 # Build frontend
 WORKDIR /frontend
 COPY app/frontend/package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 COPY app/frontend/ ./
+# Clear any existing node_modules platform-specific binaries and reinstall
+RUN rm -rf node_modules/.cache && npm rebuild
 RUN npm run build
 
 # Production Python image
@@ -26,6 +28,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install dependencies
+COPY app/backend/requirements.txt ./
 COPY app/backend/requirements.prod.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.prod.txt
@@ -33,8 +36,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy backend code
 COPY app/backend/ ./
 
-# Copy built frontend from previous stage
-COPY --from=frontend-builder /frontend/dist ./static
+# Copy built frontend from previous stage (Vite outputs to ../backend/static)
+COPY --from=frontend-builder /backend/static ./static
 
 # Create necessary directories and set permissions
 RUN mkdir -p logs data .chroma \

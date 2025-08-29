@@ -17,17 +17,17 @@ def configure_security(app):
          allow_headers=['Content-Type', 'Authorization'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
     
-    # Security headers with Talisman
+    # Security headers with Talisman - CSP optimized for Fluent UI
     csp = {
         'default-src': "'self'",
         'script-src': [
             "'self'",
-            "'unsafe-inline'",  # Needed for some UI libraries
+            "'unsafe-inline'",  # Needed for Fluent UI and React
             'https://cdn.jsdelivr.net',
         ],
         'style-src': [
             "'self'",
-            "'unsafe-inline'",  # Needed for inline styles
+            "'unsafe-inline'",  # Needed for Fluent UI dynamic styles
             'https://fonts.googleapis.com',
         ],
         'font-src': [
@@ -56,7 +56,8 @@ def configure_security(app):
         strict_transport_security=True,
         strict_transport_security_max_age=31536000,  # 1 year
         content_security_policy=csp,
-        content_security_policy_nonce_in=['script-src', 'style-src'],
+        # Remove nonce to avoid conflict with 'unsafe-inline'
+        content_security_policy_nonce_in=[],
         referrer_policy='strict-origin-when-cross-origin',
         permissions_policy={
             'geolocation': '()',
