@@ -17,7 +17,7 @@ const Layout = () => {
             <Outlet />
             <footer className={styles.footer}>
                 <div className={styles.footerText}>
-                    © vicent.fan@ap.logicalis.com, Logicalis Taiwan
+                    © vincent.fan@ap.logicalis.com, Logicalis Taiwan
                 </div>
             </footer>
         </div>
