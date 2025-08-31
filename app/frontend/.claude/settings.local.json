@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(C:\\PS\\VideoQnA-LTW/**)",
+      "Read(C:\\PS\\VideoQnA-LTW/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
