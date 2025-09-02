@@ -37,6 +37,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
     const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
     const [sourceType, setSourceType] = useState<'local' | 'blob'>('local');
     const [videoUrls, setVideoUrls] = useState<string>('');
+    const [uploadLanguage, setUploadLanguage] = useState<string>('auto');
     const [selectedBlobs, setSelectedBlobs] = useState<any[]>([]);
     const [selectedManageLibrary, setSelectedManageLibrary] = useState(() => {
         return localStorage.getItem('libraryManagement_selectedManageLibrary') || "";
@@ -131,6 +132,9 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
         
         if (!hasItems || !selectedUploadLibrary) return;
 
+        // Debug: show current language state before upload
+        console.log(`[DEBUG] Starting upload with language: ${uploadLanguage}`);
+
         setIsProcessing(true);
         try {
             let successCount = 0;
@@ -152,6 +156,10 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                         const formData = new FormData();
                         formData.append('video', file);
                         formData.append('library', selectedUploadLibrary);
+                        formData.append('source_language', uploadLanguage);
+                        
+                        // Debug logging
+                        console.log(`[DEBUG] Uploading ${file.name} with language: ${uploadLanguage}`);
 
                         try {
                             const response = await fetch('/upload', {
@@ -186,6 +194,9 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                         const videoName = url.split('/').pop() || `video_${i + 1}`;
                         
                         try {
+                            // Debug logging
+                            console.log(`[DEBUG] Uploading URL ${url} with language: ${uploadLanguage}`);
+                            
                             const response = await fetch('/upload', {
                                 method: 'POST',
                                 headers: {
@@ -194,7 +205,8 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 body: JSON.stringify({
                                     video_url: url,
                                     library: selectedUploadLibrary,
-                                    video_name: videoName
+                                    video_name: videoName,
+                                    source_language: uploadLanguage
                                 }),
                             });
 
@@ -489,6 +501,31 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                         selectedKey={uploadMode}
                                         onChange={(_, item) => setUploadMode(item?.key as 'file' | 'url')}
                                         disabled={isProcessing}
+                                    />
+                                    
+                                    <Dropdown
+                                        label="影片語言 (用於字幕生成)"
+                                        options={[
+                                            { key: 'auto', text: '🌐 自動偵測' },
+                                            { key: 'de-DE', text: '🇩🇪 Deutsch (German)' },
+                                            { key: 'en-US', text: '🇺🇸 English (US)' },
+                                            { key: 'es-ES', text: '🇪🇸 Español (Spanish)' },
+                                            { key: 'fr-FR', text: '🇫🇷 Français (French)' },
+                                            { key: 'it-IT', text: '🇮🇹 Italiano (Italian)' },
+                                            { key: 'ja-JP', text: '🇯🇵 日本語 (Japanese)' },
+                                            { key: 'zh-Hans', text: '🇨🇳 简体中文 (Chinese Simplified)' },
+                                            { key: 'zh-Hant', text: '🇹🇼 繁體中文 (Chinese Traditional)' },
+                                            { key: 'zh-HK', text: '🇭🇰 粵語 (Chinese Cantonese)' },
+                                            { key: 'vi-VN', text: '🇻🇳 Tiếng Việt (Vietnamese)' }
+                                        ]}
+                                        selectedKey={uploadLanguage}
+                                        onChange={(_, item) => {
+                                            const newLanguage = item?.key as string || 'auto';
+                                            console.log(`[DEBUG] Language changed to: ${newLanguage}`);
+                                            setUploadLanguage(newLanguage);
+                                        }}
+                                        disabled={isProcessing}
+                                        styles={{ root: { marginTop: 8 } }}
                                     />
                                     
                                     {uploadMode === 'file' ? (

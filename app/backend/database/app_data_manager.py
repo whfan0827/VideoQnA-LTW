@@ -176,8 +176,8 @@ class VideoDatabase:
                     INSERT OR REPLACE INTO video_index 
                     (filename, original_path, library_name, video_id, status, 
                      file_size, duration, created_at, indexed_at, metadata,
-                     source_type, blob_url, blob_container, blob_name, blob_metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_type, blob_url, blob_container, blob_name, blob_metadata, source_language)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     video_data.get('filename'),
@@ -194,7 +194,8 @@ class VideoDatabase:
                     video_data.get('blob_url'),
                     video_data.get('blob_container'),
                     video_data.get('blob_name'),
-                    json.dumps(video_data.get('blob_metadata', {})) if video_data.get('blob_metadata') else None
+                    json.dumps(video_data.get('blob_metadata', {})) if video_data.get('blob_metadata') else None,
+                    video_data.get('source_language', 'auto')
                 ))
                 conn.commit()
                 return True

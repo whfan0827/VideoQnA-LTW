@@ -37,6 +37,7 @@ class TaskInfo:
     max_retries: int = 2
     source_type: str = "local_file"
     file_size_metadata: Optional[int] = None
+    source_language: str = "auto"
     
     def to_dict(self):
         data = asdict(self)
@@ -120,7 +121,7 @@ class TaskManager:
         except Exception as e:
             logger.error(f"Failed to save task {task.task_id} to database: {e}")
     
-    def create_upload_task(self, filename: str, library_name: str, file_path: str, source_type: str = "local_file", file_size: int = None) -> str:
+    def create_upload_task(self, filename: str, library_name: str, file_path: str, source_language: str = "auto", source_type: str = "local_file", file_size: int = None) -> str:
         """Create a new file upload task"""
         task_id = str(uuid.uuid4())
         
@@ -135,7 +136,8 @@ class TaskManager:
             file_path=file_path,
             created_at=datetime.now(),
             source_type=source_type,
-            file_size_metadata=file_size
+            file_size_metadata=file_size,
+            source_language=source_language
         )
         
         with self.lock:
@@ -158,7 +160,7 @@ class TaskManager:
             file_size=file_size
         )
     
-    def create_url_upload_task(self, filename: str, library_name: str, video_url: str) -> str:
+    def create_url_upload_task(self, filename: str, library_name: str, video_url: str, source_language: str = "auto") -> str:
         """Create a new URL upload task"""
         task_id = str(uuid.uuid4())
         
@@ -171,7 +173,8 @@ class TaskManager:
             filename=filename,
             library_name=library_name,
             file_path=video_url,  # Store URL in file_path field
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            source_language=source_language
         )
         
         with self.lock:
@@ -541,7 +544,8 @@ class TaskManager:
                         progress_callback=progress_callback,
                         verbose=True,
                         use_videos_ids_cache=True,  # Use cache for fast processing
-                        original_filename=task.filename
+                        original_filename=task.filename,
+                        source_language=task.source_language or 'auto'
                     )
                     
                     # Save video record to target library database
@@ -563,7 +567,8 @@ class TaskManager:
                         'source_type': task.source_type,
                         'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
                         'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
-                        'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None
+                        'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
+                        'source_language': task.source_language
                     }
                     
                     db_manager.save_video_record(video_data)
@@ -612,7 +617,8 @@ class TaskManager:
                 progress_callback=progress_callback,
                 verbose=True,
                 use_videos_ids_cache=False,
-                original_filename=task.filename
+                original_filename=task.filename,
+                source_language=task.source_language or 'auto'
             )
         except TimeoutError as te:
             logger.error(f"Video processing timeout for task {task_id}: {te}")
@@ -653,7 +659,8 @@ class TaskManager:
                 'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
                 'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
                 'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
-                'indexed_at': datetime.now().isoformat()
+                'indexed_at': datetime.now().isoformat(),
+                'source_language': task.source_language
             }
             db_manager.save_video_record(video_data)
             logger.info(f"Video record saved for {task.filename}")
@@ -722,7 +729,9 @@ class TaskManager:
             self.update_task_progress(task_id, 30, "Uploading video from URL...")
             if video_url is None:
                 raise ValueError("Video URL is None")
-            video_id = client.upload_url_async(task.filename, video_url, wait_for_index=False)
+            actual_language = task.source_language or 'auto'
+            logger.info(f"Calling Azure Video Indexer with source_language: {actual_language}")
+            video_id = client.upload_url_async(task.filename, video_url, wait_for_index=False, source_language=actual_language)
             
             # Wait for indexing
             self.update_task_progress(task_id, 50, "Waiting for video indexing...")
@@ -748,7 +757,8 @@ class TaskManager:
                 'library_name': task.library_name,
                 'status': 'indexed',
                 'file_size': 0,  # Unknown for URL uploads
-                'indexed_at': datetime.now().isoformat()
+                'indexed_at': datetime.now().isoformat(),
+                'source_language': getattr(task, 'source_language', 'auto')
             }
             db_manager.save_video_record(video_data)
             logger.info(f"Video record saved for {task.filename}")

@@ -32,7 +32,8 @@ def index_videos(client: VideoIndexerClient,
                  privacy: str = 'private',
                  excluded_ai=None,
                  library_name: str = "",
-                 original_filename_map: dict = None) -> dict[str, str]:
+                 original_filename_map: dict = None,
+                 source_language: str = 'auto') -> dict[str, str]:
     start = time.time()
     videos_ids = {}
     file_cache = get_global_cache()
@@ -63,7 +64,7 @@ def index_videos(client: VideoIndexerClient,
             # For URLs, we can't check cache by file content, but we could check by URL hash
             # For now, proceed with upload (URLs are typically temporary SAS URLs anyway)
             try:
-                video_id = client.upload_url_async(video_name, video_str, excluded_ai=excluded_ai, privacy=privacy)
+                video_id = client.upload_url_async(video_name, video_str, excluded_ai=excluded_ai, privacy=privacy, source_language=source_language)
                 videos_ids[video_str] = video_id
                 print(f"Successfully uploaded URL video, got video_id: {video_id}")
                 
@@ -117,7 +118,7 @@ def index_videos(client: VideoIndexerClient,
                             # Use the actual filename (without extension) as video name
                             video_name = Path(filename).stem
                 
-                video_id = client.file_upload_async(video_file, video_name=video_name, excluded_ai=excluded_ai, privacy=privacy)
+                video_id = client.file_upload_async(video_file, video_name=video_name, excluded_ai=excluded_ai, privacy=privacy, source_language=source_language)
                 videos_ids[str(video_file)] = video_id
                 
                 # Cache the video_id for future duplicate detection
@@ -256,7 +257,7 @@ def prepare_db(db_name, data_dir, language_models: LanguageModels, prompt_conten
 
 def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels, prompt_content_db: PromptContentDB,
                            use_videos_ids_cache=True, video_ids_cache_file='videos_ids_cache.json', verbose=False, 
-                           single_video_file=None, progress_callback=None, original_filename=None):
+                           single_video_file=None, progress_callback=None, original_filename=None, source_language='auto'):
 
     # If single_video_file is provided, process only that file
     if single_video_file:
@@ -307,7 +308,7 @@ def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels,
             original_filename_map[single_video_file] = original_filename
         
         videos_ids = index_videos(client, videos=videos, privacy='public', library_name=db_name, 
-                                 original_filename_map=original_filename_map)
+                                 original_filename_map=original_filename_map, source_language=source_language)
         if use_videos_ids_cache:
             print(f"Saving videos IDs to {video_ids_cache_file}")
             video_ids_cache_file.write_text(json.dumps(videos_ids, cls=CustomEncoder))

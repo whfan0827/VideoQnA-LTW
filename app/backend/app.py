@@ -255,6 +255,8 @@ def upload_video():
             video_url = data['video_url']
             library_name = data['library']
             video_name = data.get('video_name', video_url.split('/')[-1])
+            source_language = data.get('source_language', 'auto')
+            logging.info(f"URL upload received source_language: {source_language}")
             
             # Validate URL format
             from urllib.parse import urlparse
@@ -268,7 +270,7 @@ def upload_video():
                 return jsonify({"error": "Library not found"}), 404
             
             # Create URL upload task
-            task_id = task_manager.create_url_upload_task(video_name, library_name, video_url)
+            task_id = task_manager.create_url_upload_task(video_name, library_name, video_url, source_language)
             
             return jsonify({
                 "task_id": task_id,
@@ -286,6 +288,8 @@ def upload_video():
                 
             video_file = request.files['video']
             library_name = request.form['library']
+            source_language = request.form.get('source_language', 'auto')
+            logging.info(f"File upload received source_language: {source_language}")
         
         if video_file.filename == '' or video_file.filename is None:
             return jsonify({"error": "No video file selected"}), 400
@@ -314,7 +318,7 @@ def upload_video():
         video_file.save(upload_path)
         
         # Create task (async processing) - pass both original and safe filenames
-        task_id = task_manager.create_upload_task(original_filename, library_name, str(upload_path))
+        task_id = task_manager.create_upload_task(original_filename, library_name, str(upload_path), source_language)
         
         return jsonify({
             "task_id": task_id,
@@ -465,6 +469,101 @@ def batch_delete_videos(library_name):
         
     except Exception as e:
         logging.exception(f"Exception in batch delete videos")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/<library_name>/videos/<video_id>/captions/<format>", methods=["GET"])
+def download_video_captions(library_name, video_id, format):
+    """Download caption/subtitle files for a specific video with language support"""
+    try:
+        # Get language parameter from query string
+        language = request.args.get('language', 'auto')  # Default to auto-detect
+        
+        # Validate format
+        supported_formats = ['srt', 'vtt', 'ttml']
+        if format.lower() not in supported_formats:
+            return jsonify({"error": f"Unsupported format '{format}'. Supported formats: {', '.join(supported_formats)}"}), 400
+        
+        # Check if library exists
+        available_dbs = prompt_content_db.get_available_dbs()
+        if library_name not in available_dbs:
+            return jsonify({"error": "Library not found"}), 404
+        
+        # Get video information from database
+        videos = db_manager.get_library_videos(library_name)
+        video = next((v for v in videos if v['video_id'] == video_id), None)
+        
+        if not video:
+            return jsonify({"error": "Video not found in library"}), 404
+        
+        if video['status'] != 'indexed':
+            return jsonify({"error": "Video must be indexed to export captions"}), 400
+        
+        # Get video indexer client using environment variables
+        from vi_search.vi_client.video_indexer_client import init_video_indexer_client
+        from dotenv import dotenv_values
+        from pathlib import Path
+        
+        try:
+            # Load configuration from .env file
+            env_path = Path(__file__).parent / ".env"
+            config = dotenv_values(env_path)
+            vi_client = init_video_indexer_client(config)
+            
+            # Map language codes for Azure Video Indexer
+            azure_language = language
+            if language == 'auto':
+                azure_language = 'en-US'  # Default fallback
+            elif language == 'zh-Hant':
+                azure_language = 'zh-Hant'  # Traditional Chinese
+            elif language == 'zh-Hans':
+                azure_language = 'zh-Hans'  # Simplified Chinese
+            elif language == 'zh-HK':
+                azure_language = 'zh-HK'  # Cantonese Traditional
+            elif language == 'vi-VN':
+                azure_language = 'vi-VN'  # Vietnamese
+            
+            # Download captions from Azure Video Indexer
+            caption_content = vi_client.download_captions(
+                video_id=video_id, 
+                format=format.lower(),
+                language=azure_language,
+                include_speakers=True
+            )
+            
+            # Generate filename: use original filename without extension + format + language
+            base_filename = video['filename']
+            if '.' in base_filename:
+                base_filename = base_filename.rsplit('.', 1)[0]
+            
+            # Add language suffix if not auto-detect
+            language_suffix = "" if language == 'auto' else f".{language}"
+            filename = f"{base_filename}{language_suffix}.{format.lower()}"
+            
+            # URL-encode filename for HTTP header compatibility (handles Chinese characters)
+            from urllib.parse import quote
+            encoded_filename = quote(filename.encode('utf-8'))
+            
+            # Return file as download
+            from flask import Response
+            response = Response(
+                caption_content,
+                mimetype='text/plain',
+                headers={
+                    'Content-Disposition': f'attachment; filename*=UTF-8\'\'{encoded_filename}',
+                    'Content-Type': f'text/{format.lower()}' if format.lower() in ['srt', 'vtt'] else 'text/plain'
+                }
+            )
+            
+            logger.info(f"Successfully downloaded {format.upper()} captions for video {video_id} in library {library_name} (Language: {language})")
+            return response
+            
+        except Exception as vi_error:
+            logger.error(f"Azure Video Indexer error for video {video_id}: {str(vi_error)}")
+            return jsonify({"error": f"Failed to download captions from Azure Video Indexer: {str(vi_error)}"}), 500
+            
+    except Exception as e:
+        logger.exception(f"Exception in download video captions for video {video_id}")
         return jsonify({"error": str(e)}), 500
 
 

@@ -14,7 +14,10 @@ import {
     PrimaryButton,
     DefaultButton,
     Spinner,
-    SpinnerSize
+    SpinnerSize,
+    Dropdown,
+    IDropdownOption,
+    TooltipHost
 } from '@fluentui/react';
 
 interface VideoItem {
@@ -29,6 +32,7 @@ interface VideoItem {
     source_type?: string;
     blob_url?: string;
     blob_container?: string;
+    source_language?: string;
 }
 
 interface VideoListProps {
@@ -46,6 +50,7 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
     const [cleanupDialogVisible, setCleanupDialogVisible] = useState(false);
     const [cleanupInProgress, setCleanupInProgress] = useState(false);
     const [cleanupResult, setCleanupResult] = useState<any>(null);
+    const [exportPanelVisible, setExportPanelVisible] = useState<string | null>(null); // video_id for which panel is open
     const [selection] = useState(new Selection({
         onSelectionChanged: () => {
             // Force component re-render by updating selection count
@@ -109,6 +114,27 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
         return date.toLocaleString();
     };
 
+    const formatLanguage = (languageCode?: string) => {
+        if (!languageCode || languageCode === 'auto') {
+            return '🌐 Auto';
+        }
+        
+        const languageMap: { [key: string]: string } = {
+            'de-DE': '🇩🇪 Deutsch',
+            'en-US': '🇺🇸 English',
+            'es-ES': '🇪🇸 Español',
+            'fr-FR': '🇫🇷 Français', 
+            'it-IT': '🇮🇹 Italiano',
+            'ja-JP': '🇯🇵 日本語',
+            'zh-Hans': '🇨🇳 简体中文',
+            'zh-Hant': '🇹🇼 繁體中文',
+            'zh-HK': '🇭🇰 粵語',
+            'vi-VN': '🇻🇳 Tiếng Việt'
+        };
+        
+        return languageMap[languageCode] || languageCode;
+    };
+
     const columns: IColumn[] = [
         {
             key: 'video_id',
@@ -153,6 +179,22 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             onRender: (item: VideoItem) => formatFileSize(item.file_size)
         },
         {
+            key: 'source_language',
+            name: 'Language',
+            fieldName: 'source_language',
+            minWidth: 100,
+            maxWidth: 140,
+            isResizable: true,
+            onRender: (item: VideoItem) => (
+                <span style={{ 
+                    fontSize: '12px',
+                    fontWeight: 500
+                }}>
+                    {formatLanguage(item.source_language)}
+                </span>
+            )
+        },
+        {
             key: 'source_type',
             name: 'Source',
             fieldName: 'source_type',
@@ -192,8 +234,144 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             maxWidth: 200,
             isResizable: true,
             onRender: (item: VideoItem) => formatDate(item.created_at)
+        },
+        {
+            key: 'export',
+            name: 'Export',
+            minWidth: 100,
+            maxWidth: 120,
+            isResizable: true,
+            onRender: (item: VideoItem) => (
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                    <TooltipHost content={item.status !== 'indexed' ? 'Video must be indexed to export captions' : 'Export subtitle files'}>
+                        <PrimaryButton
+                            text="Export"
+                            iconProps={{ iconName: 'Download' }}
+                            disabled={item.status !== 'indexed'}
+                            onClick={() => setExportPanelVisible(exportPanelVisible === item.video_id ? null : item.video_id || null)}
+                            data-video-id={item.video_id}
+                            styles={{ 
+                                root: { 
+                                    minWidth: 80,
+                                    height: 24,
+                                    fontSize: '11px',
+                                    padding: '0 8px'
+                                }
+                            }}
+                        />
+                    </TooltipHost>
+                </div>
+            )
+        },
+        // Portal for export panel to avoid stacking context issues
+        exportPanelVisible && {
+            key: 'exportPortal',
+            name: '',
+            minWidth: 1,
+            maxWidth: 1,
+            onRender: () => {
+                const currentVideo = videos.find(v => v.video_id === exportPanelVisible);
+                if (!currentVideo) return null;
+
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        zIndex: 9999,
+                        pointerEvents: 'none'
+                    }}>
+                        <div 
+                            style={{
+                                position: 'absolute',
+                                top: '50%', // Will be adjusted by JavaScript
+                                right: '20px',
+                                zIndex: 10000,
+                                backgroundColor: 'white',
+                                border: '1px solid #d1d1d1',
+                                borderRadius: '4px',
+                                padding: '12px',
+                                minWidth: '280px',
+                                boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
+                                maxHeight: '400px',
+                                overflow: 'visible',
+                                pointerEvents: 'auto'
+                            }}
+                            ref={(el) => {
+                                if (el) {
+                                    // Position the panel near the clicked button
+                                    const buttonElement = document.querySelector(`[data-video-id="${exportPanelVisible}"]`);
+                                    if (buttonElement) {
+                                        const rect = buttonElement.getBoundingClientRect();
+                                        el.style.top = `${rect.bottom + 4}px`;
+                                        el.style.right = `${window.innerWidth - rect.right}px`;
+                                    }
+                                }
+                            }}
+                        >
+                            <div style={{ marginBottom: '12px', fontWeight: 600, fontSize: '13px' }}>
+                                Export Options
+                            </div>
+                            
+                            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#666' }}>
+                                Subtitle files will be exported in the language specified during video upload.
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <DefaultButton
+                                    text="SRT"
+                                    iconProps={{ iconName: 'Download' }}
+                                    onClick={() => handleExport(currentVideo, 'srt', currentVideo.source_language || 'auto')}
+                                    styles={{ root: { minWidth: '60px' } }}
+                                />
+                                <DefaultButton
+                                    text="VTT"
+                                    iconProps={{ iconName: 'Download' }}
+                                    onClick={() => handleExport(currentVideo, 'vtt', currentVideo.source_language || 'auto')}
+                                    styles={{ root: { minWidth: '60px' } }}
+                                />
+                                <PrimaryButton
+                                    text="Both"
+                                    iconProps={{ iconName: 'CloudDownload' }}
+                                    onClick={() => handleExport(currentVideo, 'both', currentVideo.source_language || 'auto')}
+                                    styles={{ root: { minWidth: '60px' } }}
+                                />
+                            </div>
+                            
+                            <div style={{ marginTop: '8px' }}>
+                                <DefaultButton
+                                    text="Cancel"
+                                    onClick={() => setExportPanelVisible(null)}
+                                    styles={{ 
+                                        root: { 
+                                            width: '100%',
+                                            fontSize: '11px',
+                                            height: '24px'
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            {/* Click outside to close */}
+                            <div 
+                                style={{
+                                    position: 'fixed',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100vw',
+                                    height: '100vh',
+                                    zIndex: -1
+                                }}
+                                onClick={() => setExportPanelVisible(null)}
+                            />
+                        </div>
+                    </div>
+                );
+            }
         }
-    ];
+    ].filter(Boolean) as IColumn[];
 
     const getSelectedItems = (): VideoItem[] => {
         return selection.getSelection() as VideoItem[];
@@ -286,6 +464,62 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
         } finally {
             setCleanupInProgress(false);
         }
+    };
+
+    const handleExport = async (item: VideoItem, format: string, language?: string) => {
+        if (!item.video_id || item.status !== 'indexed') {
+            setError('Video must be indexed and have a valid video ID to export captions');
+            return;
+        }
+
+        const selectedLanguage = language || 'auto'; // Default to auto-detect
+
+        try {
+            if (format === 'both') {
+                // Download both SRT and VTT
+                await downloadCaption(item, 'srt', selectedLanguage);
+                await downloadCaption(item, 'vtt', selectedLanguage);
+            } else {
+                await downloadCaption(item, format, selectedLanguage);
+            }
+            
+            // Close the export panel after successful download
+            setExportPanelVisible(null);
+        } catch (err) {
+            setError(`Failed to export ${format.toUpperCase()} file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            console.error('Error exporting captions:', err);
+        }
+    };
+
+    const downloadCaption = async (item: VideoItem, format: string, language: string = 'auto') => {
+        const url = `/libraries/${libraryName}/videos/${item.video_id}/captions/${format}${language !== 'auto' ? `?language=${language}` : ''}`;
+        
+        const response = await fetch(url, {
+            method: 'GET'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to export caption file' }));
+            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // Create download link
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        
+        // Generate filename: remove extension and add format and language
+        const baseFilename = item.filename.replace(/\.[^/.]+$/, '');
+        const languageSuffix = language !== 'auto' ? `.${language}` : '';
+        link.download = `${baseFilename}${languageSuffix}.${format}`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        console.log(`Successfully exported ${format.toUpperCase()} for video: ${item.filename} (Language: ${language})`);
     };
 
     const commandBarItems: ICommandBarItemProps[] = [

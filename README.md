@@ -1,6 +1,8 @@
-# VideoQnA-LTW: Video Archive Q&A with RAG
+# VideoQnA-LTW: Video Archive Q&A with RAG (NTHU Local Service)
 
 **A production-ready Video Archive Q&A application using Retrieval Augmented Generation (RAG)** that integrates Azure AI Video Indexer, Azure OpenAI, and vector databases for intelligent video content analysis and querying.
+
+> **🏫 NTHU Local Service Version**: This branch (`videoqna-nthu`) is specifically configured for National Tsing Hua University (國立清華大學) local deployment with optimized settings for educational environments.
 
 ## ✨ Key Features
 
@@ -109,6 +111,9 @@ git --version       # Any recent version
 # Clone and navigate to project
 git clone <repository-url>
 cd VideoQnA-LTW
+
+# Switch to NTHU branch (if not already on it)
+git checkout videoqna-nthu
 
 # Quick start - sets up everything automatically
 .\start_local.ps1
@@ -838,8 +843,35 @@ For technical support:
 
 For bugs or feature requests, please refer to the project repository or contact the development team.
 
+## 🏫 NTHU Local Service Configuration
+
+### Branch Information
+- **Branch Name**: `videoqna-nthu`
+- **Target Environment**: National Tsing Hua University (國立清華大學)
+- **Deployment Mode**: Local development and testing optimized for educational use
+- **Base Version**: VideoQnA-LTW v3.0 with NTHU-specific configurations
+
+### Educational Use Features
+- **Local-First Design**: Optimized for campus network environments
+- **Multi-Language Support**: Enhanced Traditional Chinese interface support
+- **Educational Templates**: Pre-configured AI templates suitable for academic content
+- **Resource Management**: Configured for shared computing resources
+
+### NTHU-Specific Settings
+- Campus network optimization settings
+- Educational content analysis templates
+- Simplified deployment for teaching environments
+- Enhanced local file processing capabilities
+
+### Getting Started for NTHU Users
+1. **Prerequisites**: Standard system requirements (Python 3.10+, Node.js 18+)
+2. **Installation**: Use automated setup script `.\start_local.ps1`
+3. **Configuration**: Test mode recommended for initial setup (`LANGUAGE_MODEL=dummy`)
+4. **Support**: Contact local IT support for campus-specific configuration
+
 ---
 
-**Last Updated**: 2025-08-28  
-**System Version**: VideoQnA-LTW v3.0 (Hybrid Storage)  
+**Last Updated**: 2025-09-02  
+**System Version**: VideoQnA-LTW v3.0 (NTHU Local Service)  
+**Branch**: videoqna-nthu  
 **Documentation Maintained by**: Claude Code Assistant
