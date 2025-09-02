@@ -1,8 +1,6 @@
-# VideoQnA-LTW: Video Archive Q&A with RAG (NTHU Local Service)
+# VideoQnA-LTW: Video Archive Q&A with RAG
 
 **A production-ready Video Archive Q&A application using Retrieval Augmented Generation (RAG)** that integrates Azure AI Video Indexer, Azure OpenAI, and vector databases for intelligent video content analysis and querying.
-
-> **🏫 NTHU Local Service Version**: This branch (`videoqna-nthu`) is specifically configured for National Tsing Hua University (國立清華大學) local deployment with optimized settings for educational environments.
 
 ## ✨ Key Features
 
@@ -14,6 +12,7 @@
 - **🎯 Template System**: Customizable AI response templates for different use cases
 - **📱 Modern UI**: React frontend with Fluent UI components
 - **🔄 Hybrid Storage**: Local file uploads + Azure Blob Storage imports
+- **📝 Caption Export**: Multi-format subtitle export (SRT, VTT, TTML) with language support
 
 ![RAG Architecture](docs/ask_your_archive.jpg)
 
@@ -111,9 +110,6 @@ git --version       # Any recent version
 # Clone and navigate to project
 git clone <repository-url>
 cd VideoQnA-LTW
-
-# Switch to NTHU branch (if not already on it)
-git checkout videoqna-nthu
 
 # Quick start - sets up everything automatically
 .\start_local.ps1
@@ -457,6 +453,7 @@ python .\app\backend\vi_search\prepare_db.py
 - **Token Caching**: Azure authentication tokens cached for 50 minutes
 - **Connection Pooling**: Shared HTTP sessions reduce connection overhead
 - **Retry Logic**: Exponential backoff for transient network failures
+- **Caption Processing**: Efficient subtitle generation with smart formatting and line breaking
 
 ### 🏗️ Modular Architecture
 - **Frontend**: React + TypeScript with Fluent UI components
@@ -487,6 +484,7 @@ python .\app\backend\vi_search\prepare_db.py
 - **Real-time Updates**: Live progress tracking and status notifications
 - **Hybrid Upload Interface**: Seamless switching between local files and blob storage
 - **Intuitive Navigation**: Clean, organized button layout and panel system
+- **Caption Export UI**: One-click subtitle download with format selection
 
 ## 🛠️ Advanced Features
 
@@ -538,6 +536,41 @@ python .\app\backend\vi_search\prepare_db.py
 - **Component Communication**: Custom events (`conversation_starters_updated`) for real-time updates
 - **Error Handling**: Automatic fallback to defaults if localStorage data is corrupted
 
+### Caption Export System
+
+**Multi-Format Subtitle Export**: Export video transcripts as professional subtitle files for external video players, editing software, and accessibility compliance.
+
+**Supported Formats:**
+- **SRT** (SubRip Text): Most widely supported format, compatible with all major video players
+- **VTT** (WebVTT): Modern web standard, optimized for HTML5 video players
+- **TTML** (Timed Text Markup Language): XML-based format with advanced styling capabilities
+
+**Language Support:**
+- **Automatic Detection**: System automatically detects video language during indexing
+- **Multi-Language Export**: Support for Traditional Chinese (zh-TW), Simplified Chinese (zh-CN), English (US), and 40+ other languages
+- **Language Override**: Manual language selection for mixed-language content
+
+**Export Features:**
+- **Speaker Identification**: Optional speaker labels in exported captions (e.g., "Speaker 1:", "Speaker 2:")
+- **Smart Line Breaking**: Automatic text wrapping following subtitle best practices (max 42 characters per line)
+- **Proper Timing**: Precise timestamp synchronization with video content
+- **UTF-8 Encoding**: Full Unicode support for international characters
+- **Batch Export**: Download multiple formats simultaneously
+
+**Usage:**
+1. **Access Export**: Click "Export" button in the video library for indexed videos
+2. **Select Format**: Choose SRT, VTT, or TTML format
+3. **Choose Language**: Select target language (defaults to video's detected language)
+4. **Download**: Caption files are automatically named with video title and format
+5. **Batch Download**: Use "Both" option to download SRT and VTT simultaneously
+
+**Technical Implementation:**
+- **Azure Video Indexer Integration**: Leverages AI-generated transcripts and timing data
+- **Fallback Processing**: Alternative transcript extraction when direct caption API is unavailable
+- **Error Handling**: Graceful degradation with informative error messages
+- **File Naming**: Safe filename generation with proper encoding for international characters
+- **Browser Compatibility**: Universal download support across all modern browsers
+
 ## 🧪 Testing & Verification
 
 ### Test Azure Authentication
@@ -579,7 +612,7 @@ VideoQnA-LTW/
 │
 ├── 📁 app/                         # Main application
 │   ├── 📁 backend/                 # Python Flask backend
-│   │   ├── 📄 app.py               # Main Flask application entry
+│   │   ├── 📄 app.py               # Main Flask application entry (includes caption export API)
 │   │   ├── 📄 task_manager.py      # Background task processing
 │   │   ├── 📄 database.py          # Database utilities
 │   │   ├── 📄 requirements.txt     # Python dependencies
@@ -592,7 +625,7 @@ VideoQnA-LTW/
 │   │   │   ├── 📄 constants.py     # Application constants
 │   │   │   │
 │   │   │   ├── 📁 vi_client/       # Azure Video Indexer client
-│   │   │   │   ├── 📄 video_indexer_client.py # Main VI client
+│   │   │   │   ├── 📄 video_indexer_client.py # Main VI client (includes caption export)
 │   │   │   │   ├── 📄 account_token_provider.py # Authentication
 │   │   │   │   └── 📄 consts.py    # VI constants
 │   │   │   │
@@ -843,35 +876,9 @@ For technical support:
 
 For bugs or feature requests, please refer to the project repository or contact the development team.
 
-## 🏫 NTHU Local Service Configuration
-
-### Branch Information
-- **Branch Name**: `videoqna-nthu`
-- **Target Environment**: National Tsing Hua University (國立清華大學)
-- **Deployment Mode**: Local development and testing optimized for educational use
-- **Base Version**: VideoQnA-LTW v3.0 with NTHU-specific configurations
-
-### Educational Use Features
-- **Local-First Design**: Optimized for campus network environments
-- **Multi-Language Support**: Enhanced Traditional Chinese interface support
-- **Educational Templates**: Pre-configured AI templates suitable for academic content
-- **Resource Management**: Configured for shared computing resources
-
-### NTHU-Specific Settings
-- Campus network optimization settings
-- Educational content analysis templates
-- Simplified deployment for teaching environments
-- Enhanced local file processing capabilities
-
-### Getting Started for NTHU Users
-1. **Prerequisites**: Standard system requirements (Python 3.10+, Node.js 18+)
-2. **Installation**: Use automated setup script `.\start_local.ps1`
-3. **Configuration**: Test mode recommended for initial setup (`LANGUAGE_MODEL=dummy`)
-4. **Support**: Contact local IT support for campus-specific configuration
-
 ---
 
 **Last Updated**: 2025-09-02  
-**System Version**: VideoQnA-LTW v3.0 (NTHU Local Service)  
-**Branch**: videoqna-nthu  
+**System Version**: VideoQnA-LTW v3.1 (Caption Export)  
+**New Features**: Multi-format subtitle export (SRT, VTT, TTML) with language support  
 **Documentation Maintained by**: Claude Code Assistant
