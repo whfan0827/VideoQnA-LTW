@@ -14,9 +14,108 @@
 - **🔄 Hybrid Storage**: Local file uploads + Azure Blob Storage imports
 - **📝 Caption Export**: Multi-format subtitle export (SRT, VTT, TTML) with language support
 
-![RAG Architecture](docs/ask_your_archive.jpg)
 
 ## 🏗️ System Architecture Overview
+
+### Complete System Architecture
+
+```mermaid
+graph TB
+    subgraph "Frontend (React + TypeScript)"
+        UI[User Interface]
+        Upload[Upload Components]
+        QA[Q&A Interface]
+        Mgmt[Library Management]
+    end
+    
+    subgraph "Backend (Flask API)"
+        API[REST API Endpoints]
+        TaskMgr[Task Manager]
+        FileCache[File Hash Cache]
+        BlobService[Blob Storage Service]
+    end
+    
+    subgraph "Azure Services"
+        VI[Azure Video Indexer]
+        OpenAI[Azure OpenAI]
+        Search[Azure AI Search]
+        Storage[Azure Blob Storage]
+    end
+    
+    subgraph "Vector Database Layer"
+        AzureDB[(Azure AI Search)]
+        ChromaDB[(ChromaDB - Local)]
+    end
+    
+    subgraph "Storage Layer"
+        LocalFiles[(Local Files)]
+        BlobFiles[(Blob Storage)]
+        SQLite[(SQLite DB)]
+    end
+    
+    %% User interactions
+    UI --> Upload
+    UI --> QA
+    UI --> Mgmt
+    
+    %% Frontend to Backend
+    Upload --> API
+    QA --> API
+    Mgmt --> API
+    
+    %% Backend processing
+    API --> TaskMgr
+    API --> FileCache
+    API --> BlobService
+    
+    %% Azure integrations
+    TaskMgr --> VI
+    API --> OpenAI
+    API --> Search
+    BlobService --> Storage
+    
+    %% Vector database operations
+    TaskMgr --> AzureDB
+    TaskMgr --> ChromaDB
+    
+    %% Storage operations
+    TaskMgr --> LocalFiles
+    TaskMgr --> BlobFiles
+    TaskMgr --> SQLite
+    
+    %% Data flow
+    VI --> OpenAI
+    OpenAI --> AzureDB
+    OpenAI --> ChromaDB
+    
+    style VI fill:#e1f5fe
+    style OpenAI fill:#e8f5e8
+    style Search fill:#fff3e0
+    style Storage fill:#f3e5f5
+```
+
+### RAG Query Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant VectorDB
+    participant LLM
+    participant VideoIndexer
+    
+    User->>Frontend: Ask Question
+    Frontend->>API: POST /ask
+    API->>VectorDB: Vector Search Query
+    VectorDB->>API: Return Relevant Segments
+    API->>LLM: Generate Answer with Context
+    LLM->>API: AI-Generated Response
+    API->>VideoIndexer: Get Video Metadata
+    VideoIndexer->>API: Return Timestamps & Citations
+    API->>Frontend: Complete Answer with Citations
+    Frontend->>User: Display Answer + Video Player
+```
 
 ### Processing Architecture (Smart Duplicate Detection)
 
@@ -30,15 +129,63 @@ flowchart TD
     D -->|Found Duplicate| E[⚡ Fast Path<br/>Use Cached video_id]
     E --> F[Get Existing Insights]
     F --> G[Generate Vector Embeddings]
-    G --> H[Store in Azure AI Search]
+    G --> H[Store in Vector Database]
     H --> I[⚡ Complete < 1 minute]
     
     %% Normal Path (First Upload)
     D -->|Not Found| J[🐌 Normal Path<br/>Upload to Azure Video Indexer]
     J --> K[Wait for AI Analysis<br/>8-22 minutes]
-    K --> L[Cache Results]
+    K --> L[Cache Results with MD5]
     L --> M[Generate Embeddings]
-    M --> N[🐌 Complete]
+    M --> N[Store in Vector Database]
+    N --> O[🐌 Complete 8-22 minutes]
+    
+    style E fill:#c8e6c9
+    style I fill:#c8e6c9
+    style J fill:#ffecb3
+    style O fill:#ffecb3
+```
+
+### Hybrid Storage Architecture
+
+```mermaid
+graph LR
+    subgraph "Upload Sources"
+        LF[Local Files<br/>≤2GB each]
+        BS[Azure Blob Storage<br/>≤30GB each]
+        URL[Direct URLs<br/>≤30GB each]
+    end
+    
+    subgraph "Processing Pipeline"
+        DC[Duplicate Check<br/>MD5 Hash]
+        VI[Azure Video Indexer<br/>AI Analysis]
+        EMB[Embedding Generation<br/>Azure OpenAI]
+    end
+    
+    subgraph "Storage & Search"
+        VDB[(Vector Database<br/>Azure AI Search / ChromaDB)]
+        META[(Metadata Storage<br/>SQLite)]
+        CACHE[(File Hash Cache<br/>JSON)]
+    end
+    
+    LF --> DC
+    BS --> DC
+    URL --> DC
+    
+    DC -->|New File| VI
+    DC -->|Duplicate| CACHE
+    
+    VI --> EMB
+    CACHE --> EMB
+    
+    EMB --> VDB
+    EMB --> META
+    DC --> CACHE
+    
+    style LF fill:#e8f5e8
+    style BS fill:#e1f5fe
+    style URL fill:#fff3e0
+    style DC fill:#f3e5f5
 ```
 
 ### Backend Structure
@@ -55,14 +202,73 @@ flowchart TD
 - **task_manager.py**: **Enhanced** - Background task processing with retry logic
 
 ### Frontend Structure
+
+```mermaid
+graph TB
+    subgraph "Main Application (OneShot.tsx)"
+        QA[Q&A Interface]
+        Input[Question Input]
+        Results[Answer Display]
+    end
+    
+    subgraph "Management Panels"
+        AI[AI Parameter Panel]
+        LIB[Library Management Panel]
+        CONV[Conversation Settings Panel]
+    end
+    
+    subgraph "Upload Components"
+        MODE[Upload Mode Selector]
+        LOCAL[Local File Upload]
+        BLOB[Blob Storage Browser]
+        PROG[Task Progress Cards]
+    end
+    
+    subgraph "Display Components"
+        ANS[Answer Parser]
+        VID[Video Player Integration]
+        CIT[Citation Handler]
+        EXP[Export Options]
+    end
+    
+    subgraph "Utility Hooks"
+        TASK[useTaskManager]
+        CONFIG[useAppConfig]
+        API[API Integration]
+    end
+    
+    QA --> Input
+    QA --> Results
+    Results --> ANS
+    Results --> VID
+    ANS --> CIT
+    
+    LIB --> MODE
+    MODE --> LOCAL
+    MODE --> BLOB
+    LIB --> PROG
+    
+    VID --> EXP
+    
+    AI --> CONFIG
+    LIB --> TASK
+    CONV --> CONFIG
+    
+    TASK --> API
+    CONFIG --> API
+    
+    style QA fill:#e8f5e8
+    style LIB fill:#e1f5fe
+    style AI fill:#fff3e0
+    style CONV fill:#f3e5f5
+```
+
+**Key Features:**
 - **React + TypeScript** with Fluent UI components
-- **Main components**:
-  - `OneShot.tsx`: Main Q&A interface
-  - `AIParameterPanel/`: AI model configuration
-  - `LibraryManagementPanel/`: Video library management with hybrid upload modes
-  - `BlobStorageBrowser/`: Azure Blob Storage browser and import interface
-  - `UploadModeSelector/`: Choose between local files and blob storage
-  - `Answer/`: Response display with video player integration
+- **Modular Architecture**: Reusable components with clear separation of concerns
+- **State Management**: Custom hooks for configuration and task management
+- **Hybrid Upload Support**: Seamless switching between local files and blob storage
+- **Real-time Updates**: Live progress tracking and status notifications
 - **Vite build system** with proxy configuration for backend API calls
 
 ### Hybrid Storage Architecture
@@ -181,6 +387,52 @@ $env:PROMPT_CONTENT_DB = "azure_search"
 ```
 
 ## 🚀 Deployment Options
+
+### Deployment Architecture Comparison
+
+```mermaid
+graph TB
+    subgraph "Local Development"
+        LD[Flask + React<br/>Local Machine]
+        LDB[(SQLite + ChromaDB)]
+        LDF[Local Files]
+        LD --> LDB
+        LD --> LDF
+    end
+    
+    subgraph "Docker Deployment"
+        DC[Docker Containers]
+        DDC[Frontend Container]
+        DBC[Backend Container]
+        DDB[(Volume Mount DB)]
+        DC --> DDC
+        DC --> DBC
+        DBC --> DDB
+    end
+    
+    subgraph "Azure Cloud Deployment"
+        AS[App Service]
+        ASI[Container Instance]
+        ADB[(Azure SQL/CosmosDB)]
+        ABS[Azure Blob Storage]
+        AVI[Azure Video Indexer]
+        AOI[Azure OpenAI]
+        
+        AS --> ASI
+        ASI --> ADB
+        ASI --> ABS
+        ASI --> AVI
+        ASI --> AOI
+    end
+    
+    Users --> LD
+    Users --> DC
+    Users --> AS
+    
+    style LD fill:#e8f5e8
+    style DC fill:#e1f5fe
+    style AS fill:#fff3e0
+```
 
 ### 🖥️ **Option 1: Local Development (Recommended for Development)**
 
@@ -307,11 +559,9 @@ az group create --name VideoQnA-ResourceGroup --location eastus
      --sku basic
    ```
 
-2. **Configure pricing tier to Basic:**
-   ![basic tier](docs/create_search_service.png)
+2. **Configure pricing tier to Basic** in the Azure portal during creation
 
-3. **Get API key** - Note the admin key from Settings > Keys:
-   ![basic tier](docs/search_service_keys.png)
+3. **Get API key** - Navigate to Settings > Keys in the Azure portal and copy the admin key
 
 ### Step 3: Set up Azure OpenAI
 
@@ -740,9 +990,7 @@ VideoQnA-LTW/
 │       └── 📁 security/            # Role assignments
 │
 ├── 📁 docs/                        # Documentation assets
-│   ├── 📄 ask_your_archive.jpg     # Architecture diagram
-│   ├── 📄 create_search_service.png # Setup screenshots
-│   └── 📄 [Other Images]           # Documentation images
+│   └── 📄 [Documentation Files]    # Additional documentation
 │
 ├── 📄 azure.yaml                   # Azure Developer CLI config
 ├── 📄 docker-compose.yml           # Docker production setup
@@ -878,7 +1126,8 @@ For bugs or feature requests, please refer to the project repository or contact 
 
 ---
 
-**Last Updated**: 2025-09-02  
-**System Version**: VideoQnA-LTW v3.1 (Caption Export)  
-**New Features**: Multi-format subtitle export (SRT, VTT, TTML) with language support  
-**Documentation Maintained by**: Claude Code Assistant
+**Last Updated**: 2025-09-10  
+**System Version**: VideoQnA-LTW v3.2 (Enhanced Architecture Documentation)  
+**New Features**: Comprehensive Mermaid diagrams, enhanced blob storage language support  
+**Documentation Style**: Technical diagrams with Linus-approved clarity and simplicity  
+**Architecture Visualization**: Complete system flows using Mermaid instead of static images
