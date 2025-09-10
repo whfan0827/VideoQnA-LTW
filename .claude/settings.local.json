@@ -9,7 +9,8 @@
       "Bash(dir:*)",
       "WebFetch(domain:api-portal.videoindexer.ai)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(set PYTHONPATH=.)"
     ],
     "deny": [],
     "ask": [],

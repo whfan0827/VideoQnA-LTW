@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional, Dict
 import logging
 
+from config import AppConfig
+
 logger = logging.getLogger(__name__)
 
 class FileHashCache:
@@ -17,7 +19,9 @@ class FileHashCache:
     Uses MD5 hash of file content to identify duplicates, regardless of filename.
     """
     
-    def __init__(self, cache_file: str = "file_hash_cache.json"):
+    def __init__(self, cache_file: str = None):
+        if cache_file is None:
+            cache_file = AppConfig.CACHE_FILE_NAME
         self.cache_file = Path(__file__).parent.parent / "data" / cache_file
         self.cache_file.parent.mkdir(exist_ok=True)
         self.cache: Dict[str, dict] = self._load_cache()
@@ -46,17 +50,20 @@ class FileHashCache:
         except Exception as e:
             logger.error(f"Failed to save cache: {e}")
 
-    def get_file_hash(self, file_path: Path, chunk_size: int = 8192) -> str:
+    def get_file_hash(self, file_path: Path, chunk_size: int = None) -> str:
         """
         Calculate MD5 hash of file content efficiently
         
         Args:
             file_path: Path to the video file
-            chunk_size: Size of chunks to read (default 8KB)
+            chunk_size: Size of chunks to read (from env or default 8KB)
             
         Returns:
             MD5 hash string of the file content
         """
+        if chunk_size is None:
+            chunk_size = AppConfig.FILE_HASH_CHUNK_SIZE
+        
         hasher = hashlib.md5()
         
         try:

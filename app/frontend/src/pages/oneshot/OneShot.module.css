@@ -28,53 +28,47 @@
     justify-content: center;
     align-content: flex-start;
     width: 100%;
-    margin-top: 16px;
+    margin-top: var(--spacing-lg);
 }
 
 .oneshotTitle {
-    color: var(--type-primary, rgba(0, 0, 0, 0.8));
-    font-size: 40px;
-    font-family: Segoe UI;
-    font-style: normal;
-    font-weight: 700;
-    line-height: normal;
-    margin-top: 130px;
-    margin-bottom: 16px;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-3xl);
+    font-family: var(--font-family-base);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-tight);
+    margin-top: var(--spacing-4xl); /* 還原原來的 130px，但使用設計系統變數 */
+    margin-bottom: var(--spacing-lg);
 }
 
 .oneshotSubTitle {
-    color: var(--type-primary, var(--typography-type-primary, rgba(0, 0, 0, 0.8)));
+    color: var(--color-text-primary);
     text-align: center;
-    font-family: Segoe UI;
-    font-size: 14px;
-    font-style: normal;
-    font-weight: 400;
-    line-height: 20px;
-    margin-bottom: 24px;
-    max-width: 669px;
-    margin-left: 24px;
-    margin-top: 0;
-    margin-right: 24px;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-base);
+    margin: 0 var(--spacing-xl) var(--spacing-xl) var(--spacing-xl);
+    max-width: calc(var(--content-max-width) - var(--spacing-xl));
 }
 
 .oneshotQuestionInput {
-    max-width: 720px;
+    max-width: var(--content-max-width);
     width: 100%;
-    padding-left: 24px;
-    padding-right: 24px;
+    padding: 0 var(--content-padding);
 }
 
 .oneshotAnswerContainer {
-    max-width: 720px;
+    max-width: var(--content-max-width);
     width: 100%;
-    padding: 0 24px;
-    margin-top: 16px;
+    padding: 0 var(--content-padding);
+    margin-top: var(--spacing-lg);
 }
 
 .oneshotAnalysisPanel {
-    max-width: 720px;
+    max-width: var(--content-max-width);
     width: 100%;
-    padding: 0 24px;
+    padding: 0 var(--content-padding);
 }
 
 .oneshotSettingsSeparator {
@@ -82,45 +76,44 @@
 }
 
 .commandsContainer {
-    padding-left: 40px;
-    padding-top: 12px;
-    padding-bottom: 12px;
     position: absolute;
-    right: 0;
-    left: 0;
     top: 0;
+    left: 0;
+    right: 0;
     display: flex;
-    background-color: white;
     align-items: center;
     justify-content: flex-start;
-    flex-wrap: nowrap;
-    gap: 0;
+    gap: var(--command-button-gap);
+    padding: var(--spacing-md) var(--container-padding);
+    background-color: var(--color-bg-secondary);
+    z-index: var(--z-elevated);
 }
 
 .loadingIndexes {
-    margin-top: 80px;
+    margin-top: var(--spacing-3xl);
 }
 
 .commandButton {
-    margin-right: 20px;
+    /* 移除 margin-right，使用 gap 替代 */
 }
 
 @media only screen and (max-width: 720px) {
     .oneshotTitle {
-        margin: 80px 24px 16px 24px;
-        font-size: 32px;
+        margin: var(--spacing-3xl) var(--spacing-xl) var(--spacing-lg) var(--spacing-xl);
+        font-size: var(--font-size-2xl);
     }
 
     .oneshotBottomSection {
-        margin-top: 8px;
+        margin-top: var(--spacing-sm);
     }
 
     .commandsContainer {
-        padding-left: 24px;
+        padding-left: var(--spacing-xl);
+        padding-right: var(--spacing-xl);
     }
 
     .oneshotSubTitle {
-        font-size: 13px;
+        font-size: var(--font-size-sm);
     }
 }
 
@@ -138,36 +131,36 @@
 
 /* Developer Tools Panel Styles */
 .configSection {
-    padding: 16px;
+    padding: var(--panel-padding);
     height: auto;
     overflow: visible;
 }
 
 .libraryManagementPanel {
-    padding: 16px;
+    padding: var(--panel-padding);
 }
 
 .developerSettingsPanel {
-    padding: 16px;
+    padding: var(--panel-padding);
 }
 
 .panelHeader {
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e1dfdd;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border-medium);
 }
 
 .panelHeader h3 {
-    margin: 0 0 4px 0;
-    color: #323130;
-    font-size: 18px;
-    font-weight: 600;
+    margin: 0 0 var(--spacing-xs) 0;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-medium);
 }
 
 .panelHeader p {
     margin: 0;
-    color: #605e5c;
-    font-size: 14px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-md);
 }
 
 .actionCard {

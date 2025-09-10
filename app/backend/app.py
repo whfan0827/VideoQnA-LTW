@@ -2,21 +2,10 @@ import logging
 import os
 import re
 import uuid
-import sys
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from datetime import datetime
-
-# Fix Windows encoding issues
-if sys.platform == "win32":
-    # Set environment variables for subprocess calls
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    # Reconfigure stdout/stderr for proper encoding
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
-    if hasattr(sys.stderr, 'reconfigure'):
-        sys.stderr.reconfigure(encoding='utf-8')
 
 from flask import Flask, request, jsonify
 
@@ -704,7 +693,7 @@ def get_library_ai_parameters(library_name):
         
         # Return AI parameters with default values if not set
         ai_parameters = {
-            "model": settings.get("model", "gpt-4o"),
+            "model": settings.get("model", "gpt-4.1-mini"),
             "temperature": settings.get("temperature", 0.7),
             "maxTokens": settings.get("maxTokens", 2000),
             "topP": settings.get("topP", 0.9),
@@ -740,7 +729,7 @@ def update_library_ai_parameters(library_name):
         ai_params = request.json
         updated_settings = {
             **existing_settings,  # Keep existing settings
-            "model": ai_params.get("model", existing_settings.get("model", "gpt-4o")),
+            "model": ai_params.get("model", existing_settings.get("model", "gpt-4.1-mini")),
             "temperature": ai_params.get("temperature", existing_settings.get("temperature", 0.7)),
             "maxTokens": ai_params.get("maxTokens", existing_settings.get("maxTokens", 2000)),
             "topP": ai_params.get("topP", existing_settings.get("topP", 0.9)),
@@ -1121,6 +1110,10 @@ def import_from_blob(library_name):
         if not data:
             return jsonify({"error": "No JSON data provided"}), 400
         
+        # Extract language parameter
+        source_language = data.get('source_language', 'auto')
+        logging.info(f"Blob import with source language: {source_language}")
+        
         # Check if library exists
         available_dbs = prompt_content_db.get_available_dbs()
         if library_name not in available_dbs:
@@ -1146,7 +1139,7 @@ def import_from_blob(library_name):
                 if matching_blob:
                     file_size = matching_blob.size
             
-            task_id = task_manager.create_blob_import_task(filename, blob_url, library_name, file_size)
+            task_id = task_manager.create_blob_import_task(filename, blob_url, library_name, file_size, source_language)
             task_ids.append(task_id)
             
         elif 'blob_path' in data:
@@ -1158,7 +1151,7 @@ def import_from_blob(library_name):
             for blob in blobs:
                 sas_url = blob_service.generate_sas_url(container_name, blob.name)
                 filename = blob.name.split('/')[-1]  # Extract filename from path
-                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size)
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size, source_language)
                 task_ids.append(task_id)
                 
         elif 'blob_metadata' in data:
@@ -1170,7 +1163,7 @@ def import_from_blob(library_name):
             for blob in blobs:
                 sas_url = blob_service.generate_sas_url(container_name, blob.name)
                 filename = blob.name.split('/')[-1]  # Extract filename from path
-                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size)
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, blob.size, source_language)
                 task_ids.append(task_id)
                 
         elif 'blob_list' in data:
@@ -1196,7 +1189,7 @@ def import_from_blob(library_name):
                 
                 sas_url = blob_service.generate_sas_url(container_name, blob_name)
                 filename = blob_name.split('/')[-1]  # Extract filename from path
-                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, file_size)
+                task_id = task_manager.create_blob_import_task(filename, sas_url, library_name, file_size, source_language)
                 task_ids.append(task_id)
         else:
             return jsonify({"error": "No valid import method specified. Use one of: blob_url, blob_path, blob_metadata, blob_list"}), 400

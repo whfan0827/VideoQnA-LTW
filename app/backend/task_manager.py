@@ -9,49 +9,16 @@ from typing import Dict, Optional, List
 from pathlib import Path
 
 from database.app_data_manager import db_manager
+from config import AppConfig
+from models.task_models import TaskInfo, TaskStatus, Task, TaskExecution
 
 logger = logging.getLogger(__name__)
-
-class TaskStatus(Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-@dataclass
-class TaskInfo:
-    task_id: str
-    task_type: str
-    status: TaskStatus
-    progress: int  # 0-100
-    current_step: str
-    filename: str
-    library_name: str
-    created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
-    file_path: Optional[str] = None
-    retry_count: int = 0
-    max_retries: int = 2
-    source_type: str = "local_file"
-    file_size_metadata: Optional[int] = None
-    source_language: str = "auto"
-    
-    def to_dict(self):
-        data = asdict(self)
-        data['status'] = self.status.value
-        data['created_at'] = self.created_at.isoformat()
-        data['started_at'] = self.started_at.isoformat() if self.started_at else None
-        data['completed_at'] = self.completed_at.isoformat() if self.completed_at else None
-        return data
 
 class TaskManager:
     def __init__(self):
         self.tasks: Dict[str, TaskInfo] = {}
         self.processing_queue = []
-        self.max_concurrent = 1  # Maximum concurrent processing tasks
+        self.max_concurrent = AppConfig.MAX_CONCURRENT_TASKS
         self.current_processing = 0
         self.lock = threading.Lock()
         self.shutdown = False
@@ -75,21 +42,8 @@ class TaskManager:
             db_tasks = db_manager.get_all_tasks()
             for db_task in db_tasks:
                 if db_task['status'] in ['pending', 'processing']:
-                    # Convert database record back to TaskInfo
-                    task = TaskInfo(
-                        task_id=db_task['task_id'],
-                        task_type=db_task['task_type'],
-                        status=TaskStatus(db_task['status']),
-                        progress=db_task['progress'],
-                        current_step=db_task['current_step'],
-                        filename=db_task['filename'],
-                        library_name=db_task['library_name'],
-                        file_path=db_task['file_path'],
-                        created_at=datetime.fromisoformat(db_task['created_at']) if db_task['created_at'] else datetime.now(),
-                        started_at=datetime.fromisoformat(db_task['started_at']) if db_task['started_at'] else None,
-                        completed_at=datetime.fromisoformat(db_task['completed_at']) if db_task['completed_at'] else None,
-                        error_message=db_task['error_message']
-                    )
+                    # Convert database record back to TaskInfo using new model
+                    task = TaskInfo.from_dict(db_task)
                     self.tasks[task.task_id] = task
                     
                     if task.status == TaskStatus.PENDING:
@@ -103,20 +57,8 @@ class TaskManager:
     def _save_task_to_db(self, task: TaskInfo):
         """Save task to database"""
         try:
-            task_data = {
-                'task_id': task.task_id,
-                'task_type': task.task_type,
-                'status': task.status.value,
-                'progress': task.progress,
-                'current_step': task.current_step,
-                'filename': task.filename,
-                'library_name': task.library_name,
-                'file_path': task.file_path,
-                'created_at': task.created_at.isoformat() if task.created_at else None,
-                'started_at': task.started_at.isoformat() if task.started_at else None,
-                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
-                'error_message': task.error_message
-            }
+            # Use the to_dict() method to get all data in the correct format
+            task_data = task.to_dict()
             db_manager.save_task(task_data)
         except Exception as e:
             logger.error(f"Failed to save task {task.task_id} to database: {e}")
@@ -125,20 +67,19 @@ class TaskManager:
         """Create a new file upload task"""
         task_id = str(uuid.uuid4())
         
-        task = TaskInfo(
+        task = TaskInfo.create_file_task(
             task_id=task_id,
             task_type="video_upload",
-            status=TaskStatus.PENDING,
-            progress=0,
-            current_step="Queued for processing",
             filename=filename,
             library_name=library_name,
             file_path=file_path,
-            created_at=datetime.now(),
             source_type=source_type,
             file_size_metadata=file_size,
             source_language=source_language
         )
+        
+        # Set initial execution state
+        task.execution.current_step = "Queued for processing"
         
         with self.lock:
             self.tasks[task_id] = task
@@ -150,32 +91,31 @@ class TaskManager:
         logger.info(f"Created file upload task {task_id} for file '{filename}' in library '{library_name}' (queue position: {len(self.processing_queue)})")
         return task_id
     
-    def create_blob_import_task(self, filename: str, blob_url: str, library_name: str, file_size: int = None) -> str:
+    def create_blob_import_task(self, filename: str, blob_url: str, library_name: str, file_size: int = None, source_language: str = "auto") -> str:
         """Create a new blob import task"""
         return self.create_upload_task(
             filename=filename,
             library_name=library_name,
             file_path=blob_url,
             source_type="blob_storage",
-            file_size=file_size
+            file_size=file_size,
+            source_language=source_language
         )
     
     def create_url_upload_task(self, filename: str, library_name: str, video_url: str, source_language: str = "auto") -> str:
         """Create a new URL upload task"""
         task_id = str(uuid.uuid4())
         
-        task = TaskInfo(
+        task = TaskInfo.create_url_task(
             task_id=task_id,
-            task_type="video_url_upload",
-            status=TaskStatus.PENDING,
-            progress=0,
-            current_step="Queued for URL processing",
             filename=filename,
             library_name=library_name,
-            file_path=video_url,  # Store URL in file_path field
-            created_at=datetime.now(),
+            video_url=video_url,
             source_language=source_language
         )
+        
+        # Set initial execution state
+        task.execution.current_step = "Queued for URL processing"
         
         with self.lock:
             self.tasks[task_id] = task
@@ -191,17 +131,16 @@ class TaskManager:
         """Create a new video deletion task"""
         task_id = str(uuid.uuid4())
         
-        task = TaskInfo(
+        task = TaskInfo.create_file_task(
             task_id=task_id,
             task_type="video_delete",
-            status=TaskStatus.PENDING,
-            progress=0,
-            current_step="Queued for deletion",
             filename=video_id,  # Use video_id as filename for deletion tasks
             library_name=library_name,
-            file_path=None,  # Not needed for deletion
-            created_at=datetime.now()
+            file_path=None  # Not needed for deletion
         )
+        
+        # Set initial execution state
+        task.execution.current_step = "Queued for deletion"
         
         with self.lock:
             self.tasks[task_id] = task
@@ -217,17 +156,16 @@ class TaskManager:
         """Create a new batch video deletion task"""
         task_id = str(uuid.uuid4())
         
-        task = TaskInfo(
+        task = TaskInfo.create_file_task(
             task_id=task_id,
             task_type="batch_video_delete",
-            status=TaskStatus.PENDING,
-            progress=0,
-            current_step=f"Queued for batch deletion ({len(video_ids)} videos)",
             filename=f"{len(video_ids)} videos",
             library_name=library_name,
-            file_path=",".join(video_ids),  # Store video IDs in file_path
-            created_at=datetime.now()
+            file_path=",".join(video_ids)  # Store video IDs in file_path
         )
+        
+        # Set initial execution state
+        task.execution.current_step = f"Queued for batch deletion ({len(video_ids)} videos)"
         
         with self.lock:
             self.tasks[task_id] = task
@@ -262,8 +200,9 @@ class TaskManager:
         with self.lock:
             if task_id in self.tasks:
                 task = self.tasks[task_id]
-                task.progress = progress
-                task.current_step = step
+                # Update using new model structure
+                task.execution.progress = progress
+                task.execution.current_step = step
                 # Save to database
                 self._save_task_to_db(task)
                 logger.debug(f"Task {task_id}: {progress}% - {step}")
@@ -274,9 +213,9 @@ class TaskManager:
             if task_id in self.tasks:
                 task = self.tasks[task_id]
                 if task.status in [TaskStatus.PENDING, TaskStatus.PROCESSING]:
-                    task.status = TaskStatus.CANCELLED
-                    task.current_step = "Cancelled by user"
-                    task.completed_at = datetime.now()
+                    task.task.status = TaskStatus.CANCELLED
+                    task.execution.current_step = "Cancelled by user"
+                    task.execution.completed_at = datetime.now()
                     if task_id in self.processing_queue:
                         self.processing_queue.remove(task_id)
                     # Save to database
@@ -364,21 +303,21 @@ class TaskManager:
             if task.status == TaskStatus.CANCELLED:
                 return
                 
-            task.status = TaskStatus.PROCESSING
-            task.started_at = datetime.now()
+            task.task.status = TaskStatus.PROCESSING
+            task.execution.started_at = datetime.now()
             
-            logger.info(f"Starting processing task {task_id}: {task.task_type} - {task.filename}")
+            logger.info(f"Starting processing task {task_id}: {task.task.task_type} - {task.file_info.filename if task.file_info else 'N/A'}")
             
-            if task.task_type == "video_upload":
+            if task.task.task_type == "video_upload":
                 self._process_video_upload(task_id)
-            elif task.task_type == "video_url_upload":
+            elif task.task.task_type == "video_url_upload":
                 self._process_video_url_upload(task_id)
-            elif task.task_type == "video_delete":
+            elif task.task.task_type == "video_delete":
                 self._process_video_delete(task_id)
-            elif task.task_type == "batch_video_delete":
+            elif task.task.task_type == "batch_video_delete":
                 self._process_batch_video_delete(task_id)
             else:
-                raise ValueError(f"Unknown task type: {task.task_type}")
+                raise ValueError(f"Unknown task type: {task.task.task_type}")
                 
         except Exception as e:
             logger.exception(f"Task {task_id} failed: {e}")
@@ -392,21 +331,21 @@ class TaskManager:
                 "timeout" in str(e).lower()
             )
             
-            if is_retryable and task.retry_count < task.max_retries:
-                task.retry_count += 1
-                retry_delay = task.retry_count * 60  # 1, 2, 3 minutes
-                task.status = TaskStatus.PENDING  # Reset to pending for retry
-                task.current_step = f"Retrying in {retry_delay}s (attempt {task.retry_count + 1}/{task.max_retries + 1}): {str(e)}"
-                task.error_message = f"Retry {task.retry_count}: {str(e)}"
+            if is_retryable and task.retry_policy.can_retry():
+                task.retry_policy.increment_retry()
+                retry_delay = task.retry_policy.retry_count * 60  # 1, 2, 3 minutes
+                task.task.status = TaskStatus.PENDING  # Reset to pending for retry
+                task.execution.current_step = f"Retrying in {retry_delay}s (attempt {task.retry_policy.retry_count + 1}/{task.retry_policy.max_retries + 1}): {str(e)}"
+                task.execution.error_message = f"Retry {task.retry_policy.retry_count}: {str(e)}"
                 
-                logger.info(f"Task {task_id} will retry in {retry_delay}s (attempt {task.retry_count + 1}/{task.max_retries + 1})")
+                logger.info(f"Task {task_id} will retry in {retry_delay}s (attempt {task.retry_policy.retry_count + 1}/{task.retry_policy.max_retries + 1})")
                 
                 # Schedule retry by adding back to queue with delay
                 import threading
                 def delayed_retry():
                     time.sleep(retry_delay)
                     with self.lock:
-                        if task.status == TaskStatus.PENDING:  # Only if not cancelled
+                        if task.task.status == TaskStatus.PENDING:  # Only if not cancelled
                             self.processing_queue.append(task_id)
                             logger.info(f"Task {task_id} added back to queue for retry")
                 
@@ -414,14 +353,14 @@ class TaskManager:
                 retry_thread.start()
             else:
                 # Final failure after all retries
-                task.status = TaskStatus.FAILED
-                if task.retry_count > 0:
-                    task.error_message = f"Failed after {task.retry_count} retries: {str(e)}"
-                    task.current_step = f"Failed after {task.retry_count} retries: {str(e)}"
+                task.task.status = TaskStatus.FAILED
+                if task.retry_policy.retry_count > 0:
+                    task.execution.error_message = f"Failed after {task.retry_policy.retry_count} retries: {str(e)}"
+                    task.execution.current_step = f"Failed after {task.retry_policy.retry_count} retries: {str(e)}"
                 else:
-                    task.error_message = str(e)
-                    task.current_step = f"Failed: {str(e)}"
-                task.completed_at = datetime.now()
+                    task.execution.error_message = str(e)
+                    task.execution.current_step = f"Failed: {str(e)}"
+                task.execution.completed_at = datetime.now()
             
             # Save to database
             self._save_task_to_db(task)
@@ -491,11 +430,11 @@ class TaskManager:
         
         # Fast duplicate check before processing
         file_cache = get_global_cache()
-        if task.file_path and Path(task.file_path).exists():
-            cached_info = file_cache.get_cached_video_info(Path(task.file_path))
+        if task.file_info.file_path and Path(task.file_info.file_path).exists():
+            cached_info = file_cache.get_cached_video_info(Path(task.file_info.file_path))
             if cached_info:
                 self.update_task_progress(task_id, 50, f"Duplicate detected - using cached video_id {cached_info['video_id']}")
-                logger.info(f"Skipping duplicate file upload for {task.filename} - using cached video_id {cached_info['video_id']}")
+                logger.info(f"Skipping duplicate file upload for {task.file_info.filename} - using cached video_id {cached_info['video_id']}")
                 
                 # Still need to process the video to add it to the target library
                 # Use the cached video_id to quickly generate vectors and add to database
@@ -536,49 +475,49 @@ class TaskManager:
                         self.update_task_progress(task_id, scaled_progress, step)
                     
                     videos_ids = prepare_db_with_progress(
-                        db_name=task.library_name,
+                        db_name=task.file_info.library_name,
                         data_dir=DATA_DIR,
                         language_models=language_models,
                         prompt_content_db=prompt_content_db,
-                        single_video_file=task.file_path,
+                        single_video_file=task.file_info.file_path,
                         progress_callback=progress_callback,
                         verbose=True,
                         use_videos_ids_cache=True,  # Use cache for fast processing
-                        original_filename=task.filename,
-                        source_language=task.source_language or 'auto'
+                        original_filename=task.file_info.filename,
+                        source_language=task.file_info.source_language or 'auto'
                     )
                     
                     # Save video record to target library database
                     file_size = 0
-                    if hasattr(task, 'file_size_metadata') and task.file_size_metadata:
+                    if hasattr(task, 'file_size_metadata') and task.file_info.file_size_metadata:
                         # Use blob size metadata if available
-                        file_size = task.file_size_metadata
-                    elif task.file_path and Path(task.file_path).exists():
+                        file_size = task.file_info.file_size_metadata
+                    elif task.file_info.file_path and Path(task.file_info.file_path).exists():
                         # Use local file size for local files
-                        file_size = Path(task.file_path).stat().st_size
+                        file_size = Path(task.file_info.file_path).stat().st_size
                         
                     video_data = {
-                        'filename': task.filename,
-                        'original_path': task.file_path,
-                        'library_name': task.library_name,
+                        'filename': task.file_info.filename,
+                        'original_path': task.file_info.file_path,
+                        'library_name': task.file_info.library_name,
                         'video_id': cached_info['video_id'],
                         'status': 'indexed',
                         'file_size': file_size,
-                        'source_type': task.source_type,
-                        'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
-                        'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
-                        'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
-                        'source_language': task.source_language
+                        'source_type': task.file_info.source_type,
+                        'blob_url': task.file_info.file_path if task.file_info.source_type == 'blob_storage' else None,
+                        'blob_container': self._extract_container_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
+                        'blob_name': self._extract_blob_name_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
+                        'source_language': task.file_info.source_language
                     }
                     
                     db_manager.save_video_record(video_data)
-                    logger.info(f"Video record saved for {task.filename} in library {task.library_name}")
+                    logger.info(f"Video record saved for {task.file_info.filename} in library {task.file_info.library_name}")
                     
                     # Mark as completed
-                    task.status = TaskStatus.COMPLETED
-                    task.progress = 100
-                    task.current_step = f"Duplicate processed - video indexed as {cached_info['video_id']} in {task.library_name}"
-                    task.completed_at = datetime.now()
+                    task.task.status = TaskStatus.COMPLETED
+                    task.execution.progress = 100
+                    task.execution.current_step = f"Duplicate processed - video indexed as {cached_info['video_id']} in {task.file_info.library_name}"
+                    task.execution.completed_at = datetime.now()
                     self._save_task_to_db(task)
                     return
                     
@@ -588,7 +527,7 @@ class TaskManager:
 
         # Process video with progress callbacks
         def progress_callback(step: str, progress: int):
-            if task.status == TaskStatus.CANCELLED:
+            if task.task.status == TaskStatus.CANCELLED:
                 raise Exception("Task was cancelled")
             
             # Check for timeout during long processing
@@ -609,16 +548,16 @@ class TaskManager:
         
         try:
             videos_ids = prepare_db_with_progress(
-                db_name=task.library_name,
+                db_name=task.file_info.library_name,
                 data_dir=DATA_DIR,
                 language_models=language_models,
                 prompt_content_db=prompt_content_db,
-                single_video_file=task.file_path,
+                single_video_file=task.file_info.file_path,
                 progress_callback=progress_callback,
                 verbose=True,
                 use_videos_ids_cache=False,
-                original_filename=task.filename,
-                source_language=task.source_language or 'auto'
+                original_filename=task.file_info.filename,
+                source_language=task.file_info.source_language or 'auto'
             )
         except TimeoutError as te:
             logger.error(f"Video processing timeout for task {task_id}: {te}")
@@ -629,49 +568,70 @@ class TaskManager:
             raise e
         
         # Extract video_id from the results
+        # Linus principle: eliminate special cases with proper key normalization
         video_id = None
-        if videos_ids and task.file_path in videos_ids:
-            video_id = videos_ids[task.file_path]
-            logger.info(f"Successfully obtained video_id: {video_id} for file: {task.filename}")
-        else:
-            logger.warning(f"No video_id returned for file: {task.filename}")
-            logger.debug(f"videos_ids returned: {videos_ids}")
-            logger.debug(f"Looking for file_path: {task.file_path}")
+        if videos_ids:
+            # Try multiple key formats to handle path normalization inconsistencies
+            possible_keys = [
+                task.file_info.file_path,  # Original path
+                str(Path(task.file_info.file_path)),  # Path object string
+                str(Path(task.file_info.file_path).resolve()),  # Resolved path
+                Path(task.file_info.file_path).as_posix(),  # POSIX format
+            ]
+            
+            for key in possible_keys:
+                if key in videos_ids:
+                    video_id = videos_ids[key]
+                    logger.info(f"Successfully obtained video_id: {video_id} for file: {task.file_info.filename} (key: {key})")
+                    break
+            
+            if not video_id:
+                logger.warning(f"No video_id returned for file: {task.file_info.filename}")
+                logger.debug(f"videos_ids returned: {videos_ids}")
+                logger.debug(f"Looking for file_path: {task.file_info.file_path}")
+                logger.debug(f"Tried keys: {possible_keys}")
         
+        # Linus principle: Fail fast - don't save invalid records
+        if not video_id:
+            error_msg = f"No video_id obtained for {task.file_info.filename}. This indicates processing failed."
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
         # Save video record to database
         try:
             file_size = 0
-            if hasattr(task, 'file_size_metadata') and task.file_size_metadata:
+            if hasattr(task, 'file_size_metadata') and task.file_info.file_size_metadata:
                 # Use blob size metadata if available
-                file_size = task.file_size_metadata
-            elif task.file_path and Path(task.file_path).exists():
+                file_size = task.file_info.file_size_metadata
+            elif task.file_info.file_path and Path(task.file_info.file_path).exists():
                 # Use local file size for local files
-                file_size = Path(task.file_path).stat().st_size
+                file_size = Path(task.file_info.file_path).stat().st_size
                 
             video_data = {
-                'filename': task.filename,
-                'original_path': task.file_path,
-                'library_name': task.library_name,
-                'video_id': video_id,  # This is the crucial missing piece!
+                'filename': task.file_info.filename,
+                'original_path': task.file_info.file_path,
+                'library_name': task.file_info.library_name,
+                'video_id': video_id,  # Now guaranteed to be not None
                 'status': 'indexed',
                 'file_size': file_size,
-                'source_type': task.source_type,
-                'blob_url': task.file_path if task.source_type == 'blob_storage' else None,
-                'blob_container': self._extract_container_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
-                'blob_name': self._extract_blob_name_from_url(task.file_path) if task.source_type == 'blob_storage' else None,
+                'source_type': task.file_info.source_type,
+                'blob_url': task.file_info.file_path if task.file_info.source_type == 'blob_storage' else None,
+                'blob_container': self._extract_container_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
+                'blob_name': self._extract_blob_name_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
                 'indexed_at': datetime.now().isoformat(),
-                'source_language': task.source_language
+                'source_language': task.file_info.source_language
             }
             db_manager.save_video_record(video_data)
-            logger.info(f"Video record saved for {task.filename}")
+            logger.info(f"Video record saved for {task.file_info.filename} with video_id: {video_id}")
         except Exception as ve:
-            logger.warning(f"Failed to save video record: {ve}")
+            logger.error(f"Failed to save video record: {ve}")
+            raise ve  # Re-raise to fail the task
         
         # Mark as completed
-        task.status = TaskStatus.COMPLETED
-        task.progress = 100
-        task.current_step = "Processing completed successfully"
-        task.completed_at = datetime.now()
+        task.task.status = TaskStatus.COMPLETED
+        task.execution.progress = 100
+        task.execution.current_step = "Processing completed successfully"
+        task.execution.completed_at = datetime.now()
         
         # Save to database
         self._save_task_to_db(task)
@@ -681,7 +641,7 @@ class TaskManager:
     def _process_video_url_upload(self, task_id: str):
         """Process video URL upload task"""
         task = self.tasks[task_id]
-        video_url = task.file_path  # URL is stored in file_path
+        video_url = task.file_info.file_path  # URL is stored in file_path
         
         # Step 1: Initialize
         self.update_task_progress(task_id, 5, "Initializing URL video processing...")
@@ -729,9 +689,9 @@ class TaskManager:
             self.update_task_progress(task_id, 30, "Uploading video from URL...")
             if video_url is None:
                 raise ValueError("Video URL is None")
-            actual_language = task.source_language or 'auto'
+            actual_language = task.file_info.source_language or 'auto'
             logger.info(f"Calling Azure Video Indexer with source_language: {actual_language}")
-            video_id = client.upload_url_async(task.filename, video_url, wait_for_index=False, source_language=actual_language)
+            video_id = client.upload_url_async(task.file_info.filename, video_url, wait_for_index=False, source_language=actual_language)
             
             # Wait for indexing
             self.update_task_progress(task_id, 50, "Waiting for video indexing...")
@@ -742,7 +702,7 @@ class TaskManager:
             sections = client.get_prompt_content_async(video_id)
             
             # Add to vector database
-            prompt_content_db.set_db(task.library_name)
+            prompt_content_db.set_db(task.file_info.library_name)
             prompt_content_db.add_sections_to_db(sections, upload_batch_size=100)
             
         except Exception as e:
@@ -752,24 +712,24 @@ class TaskManager:
         # Save video record to database
         try:
             video_data = {
-                'filename': task.filename,
+                'filename': task.file_info.filename,
                 'original_path': video_url,
-                'library_name': task.library_name,
+                'library_name': task.file_info.library_name,
                 'status': 'indexed',
                 'file_size': 0,  # Unknown for URL uploads
                 'indexed_at': datetime.now().isoformat(),
                 'source_language': getattr(task, 'source_language', 'auto')
             }
             db_manager.save_video_record(video_data)
-            logger.info(f"Video record saved for {task.filename}")
+            logger.info(f"Video record saved for {task.file_info.filename}")
         except Exception as ve:
             logger.warning(f"Failed to save video record: {ve}")
         
         # Mark as completed
-        task.status = TaskStatus.COMPLETED
-        task.progress = 100
-        task.current_step = "URL processing completed successfully"
-        task.completed_at = datetime.now()
+        task.task.status = TaskStatus.COMPLETED
+        task.execution.progress = 100
+        task.execution.current_step = "URL processing completed successfully"
+        task.execution.completed_at = datetime.now()
         
         # Save to database
         self._save_task_to_db(task)
@@ -779,7 +739,7 @@ class TaskManager:
     def _process_video_delete(self, task_id: str):
         """Process video deletion task"""
         task = self.tasks[task_id]
-        filename = task.filename
+        filename = task.file_info.filename
         
         self.update_task_progress(task_id, 10, "Starting video deletion...")
         
@@ -816,9 +776,9 @@ class TaskManager:
             
             # Check if the filename is actually a video_id (common case)
             library_variants = [
-                task.library_name,
-                task.library_name.replace('-instructions-', '-instruction-'),
-                task.library_name.replace('-instruction-', '-instructions-')
+                task.file_info.library_name,
+                task.file_info.library_name.replace('-instructions-', '-instruction-'),
+                task.file_info.library_name.replace('-instruction-', '-instructions-')
             ]
             
             # First, try to find by video_id (since filename might actually be video_id)
@@ -846,7 +806,7 @@ class TaskManager:
             if prompt_content_db is not None:
                 try:
                     # Set the database to the correct library
-                    prompt_content_db.set_db(task.library_name)
+                    prompt_content_db.set_db(task.file_info.library_name)
                     success = False
                     
                     if real_video_id:
@@ -910,10 +870,10 @@ class TaskManager:
             self.update_task_progress(task_id, 90, "Cleaning up files...")
             
             # Mark as completed
-            task.status = TaskStatus.COMPLETED
-            task.progress = 100
-            task.current_step = "Video deletion completed successfully"
-            task.completed_at = datetime.now()
+            task.task.status = TaskStatus.COMPLETED
+            task.execution.progress = 100
+            task.execution.current_step = "Video deletion completed successfully"
+            task.execution.completed_at = datetime.now()
             
             # Save to database
             self._save_task_to_db(task)
@@ -927,7 +887,7 @@ class TaskManager:
     def _process_batch_video_delete(self, task_id: str):
         """Process batch video deletion task"""
         task = self.tasks[task_id]
-        video_ids = task.file_path.split(',') if task.file_path else []
+        video_ids = task.file_info.file_path.split(',') if task.file_info.file_path else []
         total_videos = len(video_ids)
         
         self.update_task_progress(task_id, 5, f"Starting batch deletion of {total_videos} videos...")
@@ -962,7 +922,7 @@ class TaskManager:
             failed_videos = []
             
             for i, video_id in enumerate(video_ids):
-                if task.status == TaskStatus.CANCELLED:
+                if task.task.status == TaskStatus.CANCELLED:
                     break
                 
                 try:
@@ -973,7 +933,7 @@ class TaskManager:
                     if prompt_content_db is not None:
                         try:
                             # Set the database to the correct library
-                            prompt_content_db.set_db(task.library_name)
+                            prompt_content_db.set_db(task.file_info.library_name)
                             success = prompt_content_db.delete_video_documents(video_id)
                             if success:
                                 logger.info(f"Successfully removed vector documents for {video_id}")
@@ -987,9 +947,9 @@ class TaskManager:
                     
                     # Physically delete in database
                     library_variants = [
-                        task.library_name,
-                        task.library_name.replace('-instructions-', '-instruction-'),
-                        task.library_name.replace('-instruction-', '-instructions-')
+                        task.file_info.library_name,
+                        task.file_info.library_name.replace('-instructions-', '-instruction-'),
+                        task.file_info.library_name.replace('-instruction-', '-instructions-')
                     ]
                     success = False
                     
@@ -1047,16 +1007,16 @@ class TaskManager:
                     failed_videos.append(video_id)
             
             # Mark as completed
-            task.status = TaskStatus.COMPLETED
-            task.progress = 100
+            task.task.status = TaskStatus.COMPLETED
+            task.execution.progress = 100
             
             if failed_videos:
-                task.current_step = f"Batch deletion completed with errors. Deleted: {deleted_count}, Failed: {len(failed_videos)}"
-                task.error_message = f"Failed to delete: {', '.join(failed_videos)}"
+                task.execution.current_step = f"Batch deletion completed with errors. Deleted: {deleted_count}, Failed: {len(failed_videos)}"
+                task.execution.error_message = f"Failed to delete: {', '.join(failed_videos)}"
             else:
-                task.current_step = f"Batch deletion completed successfully. Deleted {deleted_count} videos"
+                task.execution.current_step = f"Batch deletion completed successfully. Deleted {deleted_count} videos"
             
-            task.completed_at = datetime.now()
+            task.execution.completed_at = datetime.now()
             
             # Save to database
             self._save_task_to_db(task)

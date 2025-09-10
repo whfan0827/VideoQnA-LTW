@@ -269,13 +269,17 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                             const filename = blob.name.split('/').pop() || blob.name;
 
                             try {
+                                // Debug logging
+                                console.log(`[DEBUG] Importing blob ${filename} with language: ${uploadLanguage}`);
+                                
                                 const response = await fetch(`/libraries/${selectedUploadLibrary}/import-from-blob`, {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
                                     },
                                     body: JSON.stringify({
-                                        blob_url: sasUrl
+                                        blob_url: sasUrl,
+                                        source_language: uploadLanguage
                                     }),
                                 });
 
@@ -493,10 +497,10 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                 <Stack tokens={{ childrenGap: 12 }} style={{ marginTop: 20 }}>
                                     {/* Upload Method Selection for Local Files */}
                                     <Dropdown
-                                        label="選擇上傳方式"
+                                        label="Upload Method"
                                         options={[
-                                            { key: 'file', text: '檔案上傳 (<2GB each)' },
-                                            { key: 'url', text: '網址上傳 (<30GB each)' }
+                                            { key: 'file', text: 'File Upload (<2GB each)' },
+                                            { key: 'url', text: 'URL Upload (<30GB each)' }
                                         ]}
                                         selectedKey={uploadMode}
                                         onChange={(_, item) => setUploadMode(item?.key as 'file' | 'url')}
@@ -504,18 +508,18 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                     />
                                     
                                     <Dropdown
-                                        label="影片語言 (用於字幕生成)"
+                                        label="Video Language (for subtitle generation)"
                                         options={[
-                                            { key: 'auto', text: '🌐 自動偵測' },
+                                            { key: 'auto', text: '🌐 Auto-detect' },
                                             { key: 'de-DE', text: '🇩🇪 Deutsch (German)' },
                                             { key: 'en-US', text: '🇺🇸 English (US)' },
                                             { key: 'es-ES', text: '🇪🇸 Español (Spanish)' },
                                             { key: 'fr-FR', text: '🇫🇷 Français (French)' },
                                             { key: 'it-IT', text: '🇮🇹 Italiano (Italian)' },
                                             { key: 'ja-JP', text: '🇯🇵 日本語 (Japanese)' },
-                                            { key: 'zh-Hans', text: '🇨🇳 简体中文 (Chinese Simplified)' },
-                                            { key: 'zh-Hant', text: '🇹🇼 繁體中文 (Chinese Traditional)' },
-                                            { key: 'zh-HK', text: '🇭🇰 粵語 (Chinese Cantonese)' },
+                                            { key: 'zh-Hans', text: '🇨🇳 简体中文 (Simplified Chinese)' },
+                                            { key: 'zh-Hant', text: '🇹🇼 繁體中文 (Traditional Chinese - Mandarin)' },
+                                            { key: 'zh-HK', text: '🇭🇰 廣東話 (Cantonese)' },
                                             { key: 'vi-VN', text: '🇻🇳 Tiếng Việt (Vietnamese)' }
                                         ]}
                                         selectedKey={uploadLanguage}
@@ -580,12 +584,36 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                             )}
                             
                             {sourceType === 'blob' && (
-                                <div style={{ marginTop: 20 }}>
+                                <Stack tokens={{ childrenGap: 12 }} style={{ marginTop: 20 }}>
+                                    <Dropdown
+                                        label="Video Language (for subtitle generation)"
+                                        options={[
+                                            { key: 'auto', text: '🌐 Auto-detect' },
+                                            { key: 'de-DE', text: '🇩🇪 Deutsch (German)' },
+                                            { key: 'en-US', text: '🇺🇸 English (US)' },
+                                            { key: 'es-ES', text: '🇪🇸 Español (Spanish)' },
+                                            { key: 'fr-FR', text: '🇫🇷 Français (French)' },
+                                            { key: 'it-IT', text: '🇮🇹 Italiano (Italian)' },
+                                            { key: 'ja-JP', text: '🇯🇵 日本語 (Japanese)' },
+                                            { key: 'zh-Hans', text: '🇨🇳 简体中文 (Simplified Chinese)' },
+                                            { key: 'zh-Hant', text: '🇹🇼 繁體中文 (Traditional Chinese - Mandarin)' },
+                                            { key: 'zh-HK', text: '🇭🇰 廣東話 (Cantonese)' },
+                                            { key: 'vi-VN', text: '🇻🇳 Tiếng Việt (Vietnamese)' }
+                                        ]}
+                                        selectedKey={uploadLanguage}
+                                        onChange={(_, item) => {
+                                            const newLanguage = item?.key as string || 'auto';
+                                            console.log(`[DEBUG] Blob import language changed to: ${newLanguage}`);
+                                            setUploadLanguage(newLanguage);
+                                        }}
+                                        disabled={isProcessing}
+                                        styles={{ root: { marginTop: 8 } }}
+                                    />
                                     <BlobStorageBrowser
                                         onSelectionChange={setSelectedBlobs}
                                         multiSelect={true}
                                     />
-                                </div>
+                                </Stack>
                             )}
 
                             <Stack tokens={{ childrenGap: 12 }} style={{ marginTop: 20 }}>

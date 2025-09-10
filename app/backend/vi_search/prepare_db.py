@@ -167,14 +167,22 @@ def wait_for_videos_processing(client: VideoIndexerClient, videos_ids: dict, get
             try:
                 video_id = videos_ids[video_file]
                 print(f"Checking processing status for video {video_id}...")
-                res = client.is_video_processed(video_id)
-                if res:
-                    print(f"Video {video_file} (ID: {video_id}) processing completed.")
-                    videos_left.remove(video_file)
-                    if get_insights:
-                        insights[video_file] = client.get_video_async(video_id)
-                else:
-                    print(f"Video {video_id} still processing...")
+                
+                # Linus principle: be explicit about what we're checking
+                try:
+                    res = client.is_video_processed(video_id)
+                    if res:
+                        print(f"Video {video_file} (ID: {video_id}) processing completed.")
+                        videos_left.remove(video_file)
+                        if get_insights:
+                            insights[video_file] = client.get_video_async(video_id)
+                    else:
+                        print(f"Video {video_id} still processing...")
+                except Exception as status_check_error:
+                    # If we can't check status, treat it as a more serious issue
+                    print(f"Failed to check status for video {video_id}: {status_check_error}")
+                    raise status_check_error  # Re-raise to hit outer exception handler
+                    
             except Exception as e:
                 elapsed = time.time() - start  # Fix: Calculate elapsed time here
                 error_str = str(e)
@@ -208,6 +216,13 @@ def wait_for_videos_processing(client: VideoIndexerClient, videos_ids: dict, get
                 else:
                     print("Will retry checking status in next iteration...")
                     # Don't remove from list, will retry
+                    
+                # Linus principle: Simple safety valve
+                # If we keep failing to check a video for a long time, assume external completion
+                if elapsed > 1800:  # After 30 minutes of errors
+                    print(f"Video {video_file} has been failing status checks for {elapsed/60:.1f} minutes")
+                    print(f"Assuming external completion (Azure UI may show 'Processed'). Removing from wait list.")
+                    videos_left.remove(video_file)
 
         elapsed = time.time() - start
         if elapsed > timeout:
@@ -309,6 +324,20 @@ def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels,
         
         videos_ids = index_videos(client, videos=videos, privacy='public', library_name=db_name, 
                                  original_filename_map=original_filename_map, source_language=source_language)
+        
+        # Linus principle: eliminate special cases by normalizing keys
+        # If single_video_file was provided, ensure the key matches the original input format
+        if single_video_file and videos_ids:
+            # Create a normalized key mapping to handle Path vs string inconsistencies
+            normalized_videos_ids = {}
+            for key, value in videos_ids.items():
+                # Always include the original key
+                normalized_videos_ids[key] = value
+                # Also add the original single_video_file as a key if this is the single file processing
+                if str(key) == str(Path(single_video_file)) or key == str(Path(single_video_file)):
+                    normalized_videos_ids[single_video_file] = value
+                    normalized_videos_ids[str(single_video_file)] = value
+            videos_ids = normalized_videos_ids
         if use_videos_ids_cache:
             print(f"Saving videos IDs to {video_ids_cache_file}")
             video_ids_cache_file.write_text(json.dumps(videos_ids, cls=CustomEncoder))

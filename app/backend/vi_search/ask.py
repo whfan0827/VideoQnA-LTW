@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod
 import re
+import logging
 
 from vi_search.prompt_content_db.prompt_content_db import PromptContentDB
 from vi_search.language_models.language_models import LanguageModels
 from vi_search.utils.ask_templates import ask_templates
+from config import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 def get_references_from_chat_answer(answer, valid_uids):
@@ -20,7 +24,7 @@ def get_references_from_chat_answer(answer, valid_uids):
     for uid in sections_uids:
         uid = uid.strip()
         if uid not in valid_uids:
-            print(f"WARNING: {uid=} not in valid UIDs. ignoring.")
+            logger.warning(f"UID {uid} not in valid UIDs, ignoring")
             continue
 
         clean_sections_uids.append(uid)
@@ -41,15 +45,15 @@ class RetrieveThenReadVectorApproach(Approach):
         generate an completion (answer) with that prompt. """
 
     def __init__(self, prompt_content_db: PromptContentDB, language_models: LanguageModels, extract_references=False,
-                 ask_template_key="default", temperature=1.0, top_p=1.0, top_n=3):
+                 ask_template_key="default", temperature=None, top_p=None, top_n=None):
         self.prompt_content_db = prompt_content_db
         self.language_models = language_models
         self.extract_references = extract_references
         self.system_prompt = ask_templates[f"{ask_template_key}_system_prompt"]
         self.user_template = ask_templates[f"{ask_template_key}_user_template"]
-        self.temperature = temperature
-        self.top_p = top_p
-        self.top_n = top_n
+        self.temperature = temperature if temperature is not None else AppConfig.DEFAULT_TEMPERATURE
+        self.top_p = top_p if top_p is not None else AppConfig.DEFAULT_TOP_P
+        self.top_n = top_n if top_n is not None else AppConfig.DEFAULT_TOP_K
 
     def run(self, q: str, overrides: dict) -> dict:
         """ Implemented in two steps:
@@ -61,15 +65,15 @@ class RetrieveThenReadVectorApproach(Approach):
         retrieval_n = overrides.get("top", self.top_n)
 
         if db_name is not None and self.prompt_content_db.db_name != db_name:
-            print(f"[DEBUG] Switching database from {self.prompt_content_db.db_name} to {db_name}")
+            logger.debug(f"Switching database from {self.prompt_content_db.db_name} to {db_name}")
             self.prompt_content_db.set_db(db_name)
         else:
-            print(f"[DEBUG] Using current database: {self.prompt_content_db.db_name}")
+            logger.debug(f"Using current database: {self.prompt_content_db.db_name}")
 
         embeddings_vector = self.language_models.get_text_embeddings(q)
         docs_by_id, results_content = self.prompt_content_db.vector_search(embeddings_vector, n_results=retrieval_n)
-        print(f"[DEBUG] Vector search returned {len(results_content)} results")
-        print(f"[DEBUG] First few characters of results: {[r[:100] + '...' if len(r) > 100 else r for r in results_content[:2]]}")
+        logger.debug(f"Vector search returned {len(results_content)} results")
+        logger.debug(f"First few characters of results: {[r[:100] + '...' if len(r) > 100 else r for r in results_content[:2]]}")
         
         all_content = "\n".join(results_content)
 

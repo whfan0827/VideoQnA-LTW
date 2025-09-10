@@ -32,6 +32,45 @@ from .consts import Consts
 from .account_token_provider import get_arm_access_token, get_account_access_token_async, GlobalSessionManager, get_cached_tokens
 
 
+def retry_on_connection_error(max_attempts=5, base_wait=3):
+    """
+    Decorator for retrying HTTP requests on connection errors (especially Windows 10054).
+    Linus principle: Handle the common case (connection errors) with a simple, reusable solution.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except requests.exceptions.ConnectionError as e:
+                    last_exception = e
+                    if "10054" in str(e) or "ConnectionResetError" in str(e):
+                        if attempt < max_attempts - 1:
+                            wait_time = base_wait * (2 ** attempt)  # Exponential backoff
+                            print(f"Connection error in {func.__name__} (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...")
+                            print(f"Error details: {str(e)}")
+                            time.sleep(wait_time)
+                            continue
+                    # Re-raise if not retryable or max attempts reached
+                    raise e
+                except requests.exceptions.Timeout as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        wait_time = base_wait * (attempt + 1)  # Linear backoff for timeouts
+                        print(f"Timeout in {func.__name__} (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    raise e
+            
+            # This should never be reached due to the raise statements above
+            raise last_exception
+        return wrapper
+    return decorator
+
+
 def auto_retry_auth(max_retries=2):
     """Simplified decorator: Only retry clear connection resets and auth errors"""
     def decorator(func):
@@ -167,7 +206,10 @@ class VideoIndexerClient:
         session = GlobalSessionManager.get_session()
         
         # Simple retry similar to original code
-        max_attempts = 2
+        # Linus principle: Be more aggressive with retries for known Windows connection issues
+        max_attempts = 5  # Increased from 2 to 5
+        base_wait = 3
+        
         for attempt in range(max_attempts):
             try:
                 response = session.get(url, headers=headers, timeout=30)
@@ -180,18 +222,27 @@ class VideoIndexerClient:
             except requests.exceptions.ConnectionError as e:
                 if "10054" in str(e) or "ConnectionResetError" in str(e):
                     if attempt < max_attempts - 1:
-                        wait_time = 3  # Fixed wait time for connection resets
-                        print(f"Account API connection reset, retrying in {wait_time}s...")
+                        # Exponential backoff for connection resets
+                        wait_time = base_wait * (2 ** attempt)  # 3, 6, 12, 24 seconds
+                        print(f"Account API connection reset (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...")
                         time.sleep(wait_time)
+                        
+                        # Clear any cached connections that might be stale
+                        if hasattr(session, 'adapters'):
+                            for adapter in session.adapters.values():
+                                if hasattr(adapter, 'poolmanager') and adapter.poolmanager:
+                                    adapter.poolmanager.clear()
                         continue
-                raise Exception(f"Failed to get account information. Connection error: {str(e)}")
+                raise Exception(f"Failed to get account information after {max_attempts} attempts. Connection error: {str(e)}")
             except requests.exceptions.Timeout:
                 if attempt < max_attempts - 1:
-                    print(f"Account API timeout, retrying...")
-                    time.sleep(2)
+                    wait_time = base_wait * (attempt + 1)  # Linear backoff for timeouts
+                    print(f"Account API timeout (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...")
+                    time.sleep(wait_time)
                     continue
                 raise Exception(f"Account API timeout after {max_attempts} attempts")
             except Exception as e:
+                # Don't retry on other types of errors
                 raise Exception(f"Failed to get account information: {str(e)}")
 
     def get_account_details(self) -> dict:
@@ -200,6 +251,7 @@ class VideoIndexerClient:
             raise Exception("Account information is not available. Please call get_account_async first.")
         return {"account_id": self.account["properties"]["accountId"], "location": self.account["location"]}
 
+    @retry_on_connection_error(max_attempts=5, base_wait=3)
     def upload_url_async(self, video_name: str, video_url: str, excluded_ai: Optional[list[str]] = None,
                          wait_for_index: bool = False, video_description: str = '', privacy='private', 
                          source_language: str = 'auto') -> str:
@@ -263,6 +315,7 @@ class VideoIndexerClient:
 
         return video_id
 
+    @retry_on_connection_error(max_attempts=5, base_wait=3)
     @auto_retry_auth(max_retries=2)
     def file_upload_async(self, media_path: str | Path, video_name: Optional[str] = None,
                           excluded_ai: Optional[list[str]] = None, video_description: str = '', privacy='private',
@@ -441,6 +494,7 @@ class VideoIndexerClient:
 
             time.sleep(20) # wait 20 seconds before checking again - reduced frequency to avoid rate limits
 
+    @retry_on_connection_error(max_attempts=3, base_wait=2)  # Lighter retry for status checks
     def is_video_processed(self, video_id: str) -> bool:
         if self.consts is None:
             raise Exception("Not authenticated. Please call authenticate_async first.")
@@ -499,6 +553,7 @@ class VideoIndexerClient:
             else:
                 raise e
 
+    @retry_on_connection_error(max_attempts=3, base_wait=2)
     def get_video_async(self, video_id: str) -> dict:
         '''
         Searches for the video in the account. Calls the searchVideo API

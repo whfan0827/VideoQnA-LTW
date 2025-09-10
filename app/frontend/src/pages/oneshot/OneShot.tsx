@@ -16,78 +16,55 @@ import { ClearChatButton } from "../../components/ClearChatButton";
 import { ConversationSettingsPanel } from "../../components/ConversationSettingsPanel";
 import AIParameterPanel from "../../components/AIParameterPanel/AIParameterPanel";
 
+import { useAppConfig } from "../../hooks/useAppConfig";
+import { useApiCall } from "../../hooks/useApiCall";
+
 const OneShot = () => {
+    // UI Panel states
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
     const [isAIParameterPanelOpen, setIsAIParameterPanelOpen] = useState(false);
-    const [approach] = useState<Approaches>(Approaches.ReadRetrieveReadVector);
-    const [promptTemplate] = useState<string>("");
-    const [promptTemplatePrefix] = useState<string>("");
-    const [promptTemplateSuffix] = useState<string>("");
-    const [retrieveCount, setRetrieveCount] = useState<number>(() => {
-        const saved = localStorage.getItem('top_k');
-        return saved ? parseInt(saved, 10) : 3;
-    });
-    const [useSemanticRanker] = useState<boolean>(true);
-    const [index, setIndex] = useState<string>();
-    const [useSemanticCaptions] = useState<boolean>(false);
-    const [excludeCategory] = useState<string>("");
+    
+    // Configuration management
+    const { topK, targetLibrary, setTargetLibrary } = useAppConfig();
+    
+    // API call management
+    const askApiCall = useApiCall<AskResponse, AskRequest>();
+    const indexesApiCall = useApiCall<string[]>();
+    
+    // Constants (moved from state)
+    const approach = Approaches.ReadRetrieveReadVector;
+    const promptTemplate = "";
+    const promptTemplatePrefix = "";
+    const promptTemplateSuffix = "";
+    const useSemanticRanker = true;
+    const useSemanticCaptions = false;
+    const excludeCategory = "";
 
+    // Local component state
     const lastQuestionRef = useRef<string>("");
-
-    const [isAskLoading, setIsAskLoading] = useState<boolean>(false);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<unknown>();
-    const [answer, setAnswer] = useState<AskResponse>();
     const [indexes, setIndexes] = useState<IDropdownOption[]>([]);
-
+    const [index, setIndex] = useState<string>();
     const [activeCitation, setActiveCitation] = useState<string>();
     const [activeScene, setActiveScene] = useState<string>();
     const [question, setQuestion] = useState<string>();
     const [activeAnalysisPanelTab, setActiveAnalysisPanelTab] = useState<AnalysisPanelTabs | undefined>(undefined);
 
-    //call getIndexes() on load
+    // Load indexes on component mount
     useEffect(() => {
         getIndexes();
     }, []);
     
-    // Load target library from localStorage and update index
+    // Sync target library with index selection
     useEffect(() => {
-        try {
-            const targetLibrary = localStorage.getItem('target_library');
-            if (targetLibrary && indexes.length > 0) {
-                const isValidLibrary = indexes.some(idx => idx.key === targetLibrary);
-                if (isValidLibrary) {
-                    setIndex(targetLibrary);
-                    console.log("[DEBUG] Set target library from localStorage:", targetLibrary);
-                } else {
-                    console.log("[DEBUG] Target library from localStorage not found in available indexes:", targetLibrary);
-                }
+        if (targetLibrary && indexes.length > 0) {
+            const isValidLibrary = indexes.some(idx => idx.key === targetLibrary);
+            if (isValidLibrary) {
+                setIndex(targetLibrary);
             }
-        } catch (error) {
-            console.error('Error loading target library:', error);
         }
-    }, [indexes]);
-    
-    // Listen for top_k changes in localStorage
-    useEffect(() => {
-        const handleStorageChange = () => {
-            const saved = localStorage.getItem('top_k');
-            const newValue = saved ? parseInt(saved, 10) : 3;
-            setRetrieveCount(newValue);
-        };
+    }, [targetLibrary, indexes]);
 
-        // Listen for storage events (changes from other tabs)
-        window.addEventListener('storage', handleStorageChange);
-        
-        // Also check on mount and when focus returns to window
-        window.addEventListener('focus', handleStorageChange);
-        
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-            window.removeEventListener('focus', handleStorageChange);
-        };
-    }, []);
     
     const refreshIndexes = async () => {
         const newIndexes = await indexesAPI();
@@ -96,9 +73,8 @@ const OneShot = () => {
     };
     
     const getIndexes = async () => {
-        setIsLoading(true);
         try {
-            const indexes = await indexesAPI();
+            const indexes = await indexesApiCall.execute(indexesAPI);
             const convertedIndexes = indexes.map(index => ({ key: index, text: formatString(index) }));
             setIndexes(convertedIndexes);
             if (indexes.includes("vi-prompt-content-example-index")) {
@@ -108,8 +84,6 @@ const OneShot = () => {
             }
         } catch (error) {
             console.error(`Error when getting indexes: ${error}`);
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -131,50 +105,31 @@ const OneShot = () => {
 
     const makeApiRequest = async (question: string) => {
         lastQuestionRef.current = question;
-
-        error && setError(undefined);
-        setIsAskLoading(true);
+        
+        // Reset UI state
         setActiveCitation(undefined);
         setActiveScene(undefined);
         setActiveAnalysisPanelTab(undefined);
 
-        try {
-            // Check for target library from localStorage before making request
-            let selectedIndex = index;
-            try {
-                const targetLibrary = localStorage.getItem('target_library');
-                if (targetLibrary && indexes.some(idx => idx.key === targetLibrary)) {
-                    selectedIndex = targetLibrary;
-                    console.log("[DEBUG] Using target library for request:", targetLibrary);
-                } else {
-                    console.log("[DEBUG] No valid target library found, using default index:", selectedIndex);
-                }
-            } catch (e) {
-                console.warn("Error reading target library from localStorage:", e);
-            }
+        // Use target library or current index
+        const selectedIndex = targetLibrary || index;
 
-            const request: AskRequest = {
-                question,
-                approach,
-                overrides: {
-                    promptTemplate: promptTemplate.length === 0 ? undefined : promptTemplate,
-                    promptTemplatePrefix: promptTemplatePrefix.length === 0 ? undefined : promptTemplatePrefix,
-                    promptTemplateSuffix: promptTemplateSuffix.length === 0 ? undefined : promptTemplateSuffix,
-                    excludeCategory: excludeCategory.length === 0 ? undefined : excludeCategory,
-                    top: retrieveCount,
-                    index: selectedIndex,
-                    semanticRanker: useSemanticRanker,
-                    semanticCaptions: useSemanticCaptions
-                }
-            };
-            console.log("[DEBUG] Making API request with index:", selectedIndex);
-            const result = await askApi(request);
-            setAnswer(result);
-        } catch (e) {
-            setError(e);
-        } finally {
-            setIsAskLoading(false);
-        }
+        const request: AskRequest = {
+            question,
+            approach,
+            overrides: {
+                promptTemplate: promptTemplate || undefined,
+                promptTemplatePrefix: promptTemplatePrefix || undefined,
+                promptTemplateSuffix: promptTemplateSuffix || undefined,
+                excludeCategory: excludeCategory || undefined,
+                top: topK,
+                index: selectedIndex,
+                semanticRanker: useSemanticRanker,
+                semanticCaptions: useSemanticCaptions
+            }
+        };
+        
+        return askApiCall.execute(askApi, request);
     };
 
 
@@ -202,10 +157,9 @@ const OneShot = () => {
 
     const clearChat = () => {
         lastQuestionRef.current = "";
-        error && setError(undefined);
+        askApiCall.reset();
         setActiveCitation(undefined);
         setActiveAnalysisPanelTab(undefined);
-        setAnswer(undefined);
         setQuestion("");
     };
 
@@ -231,7 +185,7 @@ const OneShot = () => {
                         <AIParameterButton className={styles.commandButton} onClick={() => setIsAIParameterPanelOpen(true)} />
                         <LibraryManagementButton className={styles.commandButton} onClick={() => setIsLibraryPanelOpen(!isLibraryPanelOpen)} />
                         <ConversationSettingsButton className={styles.commandButton} onClick={() => setIsConfigPanelOpen(!isConfigPanelOpen)} />
-                        <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || isAskLoading} />
+                        <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || askApiCall.isLoading} />
                     </div>
                     <h1 className={styles.oneshotTitle}>Unlock insights from your video library</h1>
                     <h3 className={styles.oneshotSubTitle}>
@@ -242,38 +196,38 @@ const OneShot = () => {
                         <QuestionInput
                             question={question}
                             placeholder="Tips: Go to Conversation Settings to pick up a Target Library first."
-                            disabled={isAskLoading || isLoading}
+                            disabled={askApiCall.isLoading || indexesApiCall.isLoading}
                             onSend={question => makeApiRequest(question)}
                         />
                     </div>
                 </div>
-                {!isLoading ? (
+                {!indexesApiCall.isLoading ? (
                     <div className={styles.oneshotBottomSection}>
-                        {isAskLoading && <Spinner label="Generating answer" />}
+                        {askApiCall.isLoading && <Spinner label="Generating answer" />}
                         {!lastQuestionRef.current && <ExampleList onExampleClicked={onExampleClicked} />}
-                        {!isAskLoading && answer && !error && (
+                        {!askApiCall.isLoading && askApiCall.data && !askApiCall.error && (
                             <div className={styles.oneshotAnswerContainer}>
                                 <Answer
-                                    answer={answer}
+                                    answer={askApiCall.data}
                                     onCitationClicked={(x, docId) => onShowCitation(x, docId)}
                                     onThoughtProcessClicked={() => onToggleTab(AnalysisPanelTabs.ThoughtProcessTab)}
                                     onSupportingContentClicked={() => onToggleTab(AnalysisPanelTabs.SupportingContentTab)}
                                 />
                             </div>
                         )}
-                        {error ? (
+                        {askApiCall.error ? (
                             <div className={styles.oneshotAnswerContainer}>
-                                <AnswerError error={error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
+                                <AnswerError error={askApiCall.error.toString()} onRetry={() => makeApiRequest(lastQuestionRef.current)} />
                             </div>
                         ) : null}
-                        {activeAnalysisPanelTab && answer && (
+                        {activeAnalysisPanelTab && askApiCall.data && (
                             <AnalysisPanel
                                 className={styles.oneshotAnalysisPanel}
                                 activeCitation={activeCitation}
                                 activeScene={activeScene}
                                 onActiveTabChanged={x => onToggleTab(x)}
                                 citationHeight="100%"
-                                answer={answer}
+                                answer={askApiCall.data}
                                 activeTab={activeAnalysisPanelTab}
                             />
                         )}

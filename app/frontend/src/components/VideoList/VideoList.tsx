@@ -17,7 +17,8 @@ import {
     SpinnerSize,
     Dropdown,
     IDropdownOption,
-    TooltipHost
+    TooltipHost,
+    DirectionalHint
 } from '@fluentui/react';
 
 interface VideoItem {
@@ -243,7 +244,23 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
             isResizable: true,
             onRender: (item: VideoItem) => (
                 <div style={{ position: 'relative', zIndex: 1 }}>
-                    <TooltipHost content={item.status !== 'indexed' ? 'Video must be indexed to export captions' : 'Export subtitle files'}>
+                    <TooltipHost 
+                        content={item.status !== 'indexed' ? 'Video must be indexed to export captions' : 'Export subtitle files'}
+                        // Linus principle: Fix the root cause with explicit positioning
+                        calloutProps={{
+                            gapSpace: 8,
+                            isBeakVisible: true,
+                            directionalHint: exportPanelVisible === item.video_id ? DirectionalHint.topCenter : DirectionalHint.bottomCenter,
+                            styles: {
+                                root: { 
+                                    zIndex: 'var(--z-tooltip)' // 使用設計系統 Z-index
+                                },
+                                calloutMain: {
+                                    zIndex: 'var(--z-tooltip)'
+                                }
+                            }
+                        }}
+                    >
                         <PrimaryButton
                             text="Export"
                             iconProps={{ iconName: 'Download' }}
@@ -301,12 +318,80 @@ const VideoList: React.FC<VideoListProps> = ({ libraryName, onVideoDeleted }) =>
                             }}
                             ref={(el) => {
                                 if (el) {
-                                    // Position the panel near the clicked button
+                                    // Linus principle: Measure first, position second. No guessing!
                                     const buttonElement = document.querySelector(`[data-video-id="${exportPanelVisible}"]`);
                                     if (buttonElement) {
                                         const rect = buttonElement.getBoundingClientRect();
-                                        el.style.top = `${rect.bottom + 4}px`;
-                                        el.style.right = `${window.innerWidth - rect.right}px`;
+                                        const margin = 12; // Increased safe margin
+                                        
+                                        // First, let panel render to get actual dimensions
+                                        el.style.visibility = 'hidden';
+                                        el.style.position = 'fixed';
+                                        el.style.top = '0px';
+                                        el.style.right = '0px';
+                                        el.style.zIndex = 'var(--z-overlay)';
+                                        
+                                        // Force render to measure actual dimensions
+                                        requestAnimationFrame(() => {
+                                            const actualPanelRect = el.getBoundingClientRect();
+                                            const actualHeight = actualPanelRect.height;
+                                            const actualWidth = actualPanelRect.width;
+                                            
+                                            // Now calculate positions using REAL dimensions
+                                            const spaceBelow = window.innerHeight - rect.bottom - margin;
+                                            const spaceAbove = rect.top - margin;
+                                            
+                                            let topPosition: number;
+                                            
+                                            // Critical boundary logic - no more guessing!
+                                            if (spaceBelow >= actualHeight + 20) {
+                                                // Plenty of space below
+                                                topPosition = rect.bottom + 4;
+                                            } else if (spaceAbove >= actualHeight + 20) {
+                                                // Not enough below, but plenty above
+                                                topPosition = rect.top - actualHeight - 4;
+                                            } else {
+                                                // Critical case: Limited space everywhere
+                                                // Force fit within viewport bounds
+                                                const maxAllowedTop = window.innerHeight - actualHeight - margin;
+                                                const minAllowedTop = margin;
+                                                
+                                                if (maxAllowedTop >= minAllowedTop) {
+                                                    // Can fit - choose better position
+                                                    topPosition = spaceBelow >= spaceAbove ? 
+                                                        Math.min(rect.bottom + 4, maxAllowedTop) :
+                                                        Math.max(rect.top - actualHeight - 4, minAllowedTop);
+                                                } else {
+                                                    // Cannot fit properly - center in viewport
+                                                    topPosition = Math.max(minAllowedTop, (window.innerHeight - actualHeight) / 2);
+                                                }
+                                            }
+                                            
+                                            // Horizontal positioning with actual width
+                                            let rightPosition = window.innerWidth - rect.right;
+                                            if (rect.right + actualWidth > window.innerWidth - margin) {
+                                                // Would overflow - align to right edge
+                                                rightPosition = margin;
+                                            }
+                                            
+                                            // Apply final positions
+                                            el.style.top = `${topPosition}px`;
+                                            el.style.right = `${Math.max(margin, rightPosition)}px`;
+                                            el.style.visibility = 'visible';
+                                            
+                                            // Final safety check
+                                            requestAnimationFrame(() => {
+                                                const finalRect = el.getBoundingClientRect();
+                                                if (finalRect.bottom > window.innerHeight - 5 || finalRect.top < 5) {
+                                                    // Emergency repositioning
+                                                    const emergencyTop = Math.max(margin, Math.min(
+                                                        window.innerHeight - actualHeight - margin,
+                                                        rect.top - actualHeight / 2
+                                                    ));
+                                                    el.style.top = `${emergencyTop}px`;
+                                                }
+                                            });
+                                        });
                                     }
                                 }
                             }}

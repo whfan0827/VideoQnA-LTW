@@ -9,23 +9,13 @@ export async function askApi(options: AskRequest): Promise<AskResponse> {
         body: JSON.stringify({
             question: options.question,
             approach: options.approach,
-            overrides: {
-                semantic_ranker: options.overrides?.semanticRanker,
-                semantic_captions: options.overrides?.semanticCaptions,
-                top: options.overrides?.top,
-                index: options.overrides?.index,
-                temperature: options.overrides?.temperature,
-                prompt_template: options.overrides?.promptTemplate,
-                prompt_template_prefix: options.overrides?.promptTemplatePrefix,
-                prompt_template_suffix: options.overrides?.promptTemplateSuffix,
-                exclude_category: options.overrides?.excludeCategory
-            }
+            overrides: options.overrides
         })
     });
 
     const parsedResponse: AskResponse = await response.json();
     if (response.status > 299 || !response.ok) {
-        throw Error(parsedResponse.error || "Unknown error");
+        throw new Error(parsedResponse.error || `API Error: ${response.status} ${response.statusText}`);
     }
 
     return parsedResponse;
@@ -41,7 +31,7 @@ export async function indexesAPI(): Promise<string[]> {
 
     const parsedResponse: string[] = await response.json();
     if (response.status > 299 || !response.ok) {
-        throw Error("Unknown error");
+        throw new Error(`Indexes API Error: ${response.status} ${response.statusText}`);
     }
 
     return parsedResponse;

@@ -1,0 +1,171 @@
+/**
+ * VideoQnA Design System
+ * Linus principle: "消除 Magic Numbers，用語義化變數表達意圖"
+ */
+
+:root {
+    /* ======================
+       Spacing System (8px grid)
+       ====================== */
+    --spacing-unit: 8px;
+    --spacing-xs: calc(var(--spacing-unit) * 0.5);    /* 4px */
+    --spacing-sm: var(--spacing-unit);                /* 8px */
+    --spacing-md: calc(var(--spacing-unit) * 1.5);    /* 12px */
+    --spacing-lg: calc(var(--spacing-unit) * 2);      /* 16px */
+    --spacing-xl: calc(var(--spacing-unit) * 3);      /* 24px */
+    --spacing-2xl: calc(var(--spacing-unit) * 5);     /* 40px */
+    --spacing-3xl: calc(var(--spacing-unit) * 10);    /* 80px */
+    --spacing-4xl: calc(var(--spacing-unit) * 16.25); /* 130px */
+
+    /* ======================
+       Layout Dimensions
+       ====================== */
+    --header-height: 46px;
+    --content-max-width: 720px;
+    --content-padding: var(--spacing-xl);
+    --container-padding: var(--spacing-2xl);
+    --panel-padding: var(--spacing-lg);
+    
+    /* Command bar */
+    --command-bar-height: calc(var(--spacing-unit) * 6); /* 48px */
+    --command-button-gap: calc(var(--spacing-unit) * 2.5); /* 20px */
+    
+    /* ======================
+       Z-Index Layers (統一管理)
+       ====================== */
+    --z-base: 0;
+    --z-elevated: 10;           /* Elevated content */
+    --z-sticky: 100;            /* Sticky headers */
+    --z-dropdown: 1000;         /* Dropdowns */
+    --z-tooltip: 2000;          /* Tooltips */
+    --z-overlay: 3000;          /* Modals, panels */
+    --z-toast: 4000;            /* Toast notifications */
+    --z-debug: 9999;            /* Debug overlays */
+
+    /* ======================
+       Colors (基於現有設計)
+       ====================== */
+    --color-bg-primary: #f2f2f2;
+    --color-bg-secondary: #ffffff;
+    --color-bg-header: #222222;
+    --color-bg-elevated: #fafafa;
+    
+    --color-text-primary: rgba(0, 0, 0, 0.8);
+    --color-text-secondary: #605e5c;
+    --color-text-inverse: #f2f2f2;
+    --color-text-disabled: rgba(0, 0, 0, 0.4);
+    
+    --color-border-light: rgba(0, 0, 0, 0.08);
+    --color-border-medium: #e1dfdd;
+    --color-border-strong: #c8c6c4;
+    
+    /* ======================
+       Typography Scale
+       ====================== */
+    --font-family-base: "Segoe UI", -apple-system, BlinkMacSystemFont, 
+                        "Roboto", "Oxygen", "Ubuntu", "Cantarell", 
+                        "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    
+    --font-size-xs: 12px;
+    --font-size-sm: 13px;
+    --font-size-md: 14px;
+    --font-size-lg: 16px;
+    --font-size-xl: 18px;
+    --font-size-2xl: 32px;
+    --font-size-3xl: 40px;
+    
+    --font-weight-normal: 400;
+    --font-weight-medium: 600;
+    --font-weight-bold: 700;
+    
+    --line-height-tight: 1.2;
+    --line-height-base: 1.4;
+    --line-height-relaxed: 1.6;
+
+    /* ======================
+       Breakpoints (響應式)
+       ====================== */
+    --breakpoint-sm: 480px;
+    --breakpoint-md: 720px;
+    --breakpoint-lg: 1024px;
+    
+    /* ======================
+       Animation & Transitions
+       ====================== */
+    --transition-fast: 150ms ease-out;
+    --transition-normal: 250ms ease-out;
+    --transition-slow: 350ms ease-out;
+    
+    --animation-fade-in: fadeIn var(--transition-normal);
+    --animation-slide-up: slideUp var(--transition-normal);
+    
+    /* ======================
+       Shadows & Effects
+       ====================== */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+    
+    --border-radius-sm: 4px;
+    --border-radius-md: 6px;
+    --border-radius-lg: 8px;
+}
+
+/* ======================
+   Utility Classes
+   ====================== */
+.u-visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.u-sr-only {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+/* ======================
+   Animation Keyframes
+   ====================== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0; 
+        transform: translateY(var(--spacing-lg)); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* ======================
+   Z-Index Debug (開發用)
+   ====================== */
+.debug-z-index::before {
+    content: attr(data-z-index);
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: red;
+    color: white;
+    font-size: 10px;
+    padding: 2px 4px;
+    z-index: var(--z-debug);
+    pointer-events: none;
+}

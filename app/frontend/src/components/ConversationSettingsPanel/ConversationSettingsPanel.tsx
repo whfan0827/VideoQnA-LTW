@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { TextField, PrimaryButton, Dropdown, Separator, Stack, MessageBar, MessageBarType, IDropdownOption, DefaultButton, SpinButton } from "@fluentui/react";
+import { useAppConfig } from '../../hooks/useAppConfig';
 import styles from "./ConversationSettingsPanel.module.css";
 
 interface ConversationSettingsPanelProps {
@@ -33,11 +34,8 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
     });
     const [message, setMessage] = useState<{ text: string; type: MessageBarType } | null>(null);
     
-    // TopK setting state with localStorage initialization
-    const [topK, setTopK] = useState(() => {
-        const saved = localStorage.getItem('top_k');
-        return saved ? parseInt(saved, 10) : 3; // Default to 3
-    });
+    // Use global TopK state instead of local state
+    const { topK, setTopK } = useAppConfig();
     
     // Conversation Starters state with localStorage initialization
     const [starter1, setStarter1] = useState(() => {
@@ -175,10 +173,7 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
         }
     }, [selectedIndex]);
 
-    // Persist topK changes
-    useEffect(() => {
-        localStorage.setItem('top_k', topK.toString());
-    }, [topK]);
+    // topK persistence is now handled by useAppConfig
 
 
     // Save target library to localStorage

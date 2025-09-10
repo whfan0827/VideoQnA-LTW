@@ -146,5 +146,55 @@
     "cached_at_readable": "2025-09-02 17:22:33",
     "privacy": "public",
     "upload_method": "file"
+  },
+  "01b730db04398150bec3b3ec40f742e9": {
+    "video_id": "016zjf9rqk",
+    "library_name": "vi-asiadigital-talkshow-index",
+    "filename": "d03df41c8095.mp4",
+    "file_size": 952245505,
+    "cached_at": 1757420054.5931404,
+    "cached_at_readable": "2025-09-09 20:14:14",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "8a7ff4e7056405e497e051bd34280f00": {
+    "video_id": "4rpzsn7j0y",
+    "library_name": "vi-asiadigital-talkshow-index",
+    "filename": "d020bfc5b234.mp4",
+    "file_size": 953704288,
+    "cached_at": 1757423135.7675672,
+    "cached_at_readable": "2025-09-09 21:05:35",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "b820b0037b29970662d2e2ca45a56a1f": {
+    "video_id": "25iyrxol9s",
+    "library_name": "vi-asiadigital-talkshow-index",
+    "filename": "f420c9c73e44.mp4",
+    "file_size": 711999229,
+    "cached_at": 1757423873.1054468,
+    "cached_at_readable": "2025-09-09 21:17:53",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "679ed0e46a8c8376caacb2df4d077ae6": {
+    "video_id": "jyxew9dhsn",
+    "library_name": "vi-asiadigital-talkshow-index",
+    "filename": "fca88aa23117.mp4",
+    "file_size": 1036768738,
+    "cached_at": 1757426967.175891,
+    "cached_at_readable": "2025-09-09 22:09:27",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "f8f12cd4ecb12ad69362b221e48fffbc": {
+    "video_id": "us2da4oep6",
+    "library_name": "vi-asiadigital-talkshow-index",
+    "filename": "87669b3ae2a5.mp4",
+    "file_size": 860463254,
+    "cached_at": 1757428431.1096764,
+    "cached_at_readable": "2025-09-09 22:33:51",
+    "privacy": "public",
+    "upload_method": "file"
   }
 }

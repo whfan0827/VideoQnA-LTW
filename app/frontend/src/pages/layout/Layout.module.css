@@ -5,22 +5,24 @@
 }
 
 .header {
-    background-color: #222222;
-    color: #f2f2f2;
+    background-color: var(--color-bg-header);
+    color: var(--color-text-inverse);
+    z-index: var(--z-sticky);
+    position: relative;
 }
 
 .headerContainer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 46px;
+    height: var(--header-height);
 }
 
 .headerTitleContainer {
     display: flex;
     align-items: center;
-    margin-right: 40px;
-    color: #f2f2f2;
+    margin-right: var(--spacing-2xl);
+    color: var(--color-text-inverse);
     text-decoration: none;
 }
 
@@ -29,9 +31,9 @@
 }
 
 .headerTitle {
-    margin-left: 40px;
-    font-weight: 600;
-    font-size: 16px;
+    margin-left: var(--spacing-2xl);
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-lg);
 }
 
 .headerNavList {
@@ -41,13 +43,10 @@
 }
 
 .headerNavPageLink {
-    color: #f2f2f2;
+    color: var(--color-text-inverse);
     text-decoration: none;
     opacity: 0.75;
-
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-    transition-duration: 500ms;
-    transition-property: opacity;
+    transition: opacity var(--transition-normal);
 }
 
 .headerNavPageLink:hover {
@@ -55,22 +54,19 @@
 }
 
 .headerNavPageLinkActive {
-    color: #f2f2f2;
+    color: var(--color-text-inverse);
     text-decoration: none;
 }
 
 .headerNavLeftMargin {
-    margin-left: 20px;
+    margin-left: var(--spacing-lg);
 }
 
 .headerRightText {
-    font-weight: normal;
-    margin-left: 40px;
-    margin-right: 40px;
-    font-size: 14px;
-    margin-top: 0;
-    margin-bottom: 0;
-    line-height: 14px;
+    font-weight: var(--font-weight-normal);
+    margin: 0 var(--spacing-2xl);
+    font-size: var(--font-size-md);
+    line-height: var(--line-height-tight);
 }
 
 .microsoftLogo {
@@ -87,23 +83,27 @@
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
-    margin-top: 40px;
+    border-top: 1px solid var(--color-border-light);
+    margin-top: var(--spacing-2xl);
 }
 
 .footerText {
-    margin-left: 40px;
-    margin-right: 40px;
-    font-family: Segoe UI;
-    font-size: 12px;
-    font-style: normal;
-    font-weight: 400;
-    padding: 18px 0;
+    margin: 0 var(--spacing-2xl);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
+    padding: calc(var(--spacing-lg) + var(--spacing-xs)) 0;
+    color: var(--color-text-secondary);
 }
 
 .footerText a {
     color: #0078d4;
     text-decoration-line: underline;
+    transition: opacity var(--transition-fast);
+}
+
+.footerText a:hover {
+    opacity: 0.8;
 }
 
 nav {
@@ -112,24 +112,24 @@ nav {
 
 @media only screen and (max-width: 720px) {
     .headerTitle {
-        margin-left: 24px;
+        margin-left: var(--spacing-xl);
         margin-top: 0;
         margin-bottom: 0;
-        line-height: 16px;
+        line-height: var(--line-height-tight);
     }
 
     .headerRightText {
         margin-left: 0;
-        margin-right: 24px;
+        margin-right: var(--spacing-xl);
     }
 
     .headerTitleContainer {
-        margin-right: 8px;
+        margin-right: var(--spacing-sm);
     }
 
     .footerText {
-        margin-left: 24px;
-        margin-right: 24px;
+        margin-left: var(--spacing-xl);
+        margin-right: var(--spacing-xl);
     }
 }
 
@@ -139,7 +139,7 @@ nav {
         flex-direction: column;
         align-items: flex-start;
         justify-content: center;
-        margin: 9px 0;
+        margin: var(--spacing-md) 0;
     }
 
     .headerTitle {
@@ -148,8 +148,8 @@ nav {
     }
 
     .headerRightText {
-        margin-top: 8px;
-        margin-left: 24px;
+        margin-top: var(--spacing-sm);
+        margin-left: var(--spacing-xl);
         margin-bottom: 0;
     }
 }

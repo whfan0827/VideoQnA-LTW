@@ -5,15 +5,12 @@ import {
   TextField,
   SpinButton,
   Slider,
-  Checkbox,
   PrimaryButton,
   DefaultButton,
   MessageBarType,
   Dropdown,
   IDropdownOption,
   Separator,
-  Panel,
-  PanelType,
 } from '@fluentui/react';
 import styles from './AIParameterPanel.module.css';
 
@@ -29,15 +26,7 @@ interface AIParameters {
   temperature: number;
   maxTokens: number;
   topP: number;
-  frequencyPenalty: number;
-  presencePenalty: number;
-  stopSequences: string[];
   systemPrompt: string;
-  conversationStarters: string[];
-  timeoutSeconds: number;
-  enableStreaming: boolean;
-  enableFunctionCalling: boolean;
-  maxRetries: number;
 }
 
 const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
@@ -50,21 +39,12 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
     return localStorage.getItem('aiParameters_selectedLibrary') || '';
   });
   const [parameters, setParameters] = useState<AIParameters>({
-    model: 'gpt-4o',
+    model: 'gpt-4.1-mini',
     temperature: 0.7,
     maxTokens: 2000,
     topP: 0.9,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    stopSequences: [],
     systemPrompt: '',
-    conversationStarters: [],
-    timeoutSeconds: 30,
-    enableStreaming: true,
-    enableFunctionCalling: false,
-    maxRetries: 3,
   });
-  const [isAdvancedPanelOpen, setIsAdvancedPanelOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // 載入參數
@@ -127,19 +107,11 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
 
   const resetToDefaults = () => {
     setParameters({
-      model: 'gpt-4o',
+      model: 'gpt-4.1-mini',
       temperature: 0.7,
       maxTokens: 2000,
       topP: 0.9,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      stopSequences: [],
       systemPrompt: '',
-      conversationStarters: [],
-      timeoutSeconds: 30,
-      enableStreaming: true,
-      enableFunctionCalling: false,
-      maxRetries: 3,
     });
     setHasUnsavedChanges(true);
   };
@@ -162,10 +134,7 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
   }));
 
   const modelOptions: IDropdownOption[] = [
-    { key: 'gpt-4o', text: 'GPT-4o (Latest)' },
-    { key: 'gpt-4-turbo', text: 'GPT-4 Turbo' },
-    { key: 'gpt-4', text: 'GPT-4' },
-    { key: 'gpt-3.5-turbo', text: 'GPT-3.5 Turbo' },
+    { key: 'gpt-4.1-mini', text: 'GPT-4.1 Mini (Available)' },
   ];
 
   return (
@@ -220,7 +189,7 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
                     label="AI Model"
                     options={modelOptions}
                     selectedKey={parameters.model}
-                    onChange={(_, option) => updateParameter('model', option?.key as string || 'gpt-4o')}
+                    onChange={(_, option) => updateParameter('model', option?.key as string || 'gpt-4.1-mini')}
                     disabled={isLoading}
                   />
                   
@@ -275,7 +244,7 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
               <div className={styles.parameterCard}>
                 <Stack tokens={{ childrenGap: 16 }}>
                   <Text variant="mediumPlus" styles={{ root: { fontWeight: 600 } }}>
-                    Advanced Sampling
+                    Advanced Control
                   </Text>
                   
                   <Stack tokens={{ childrenGap: 12 }}>
@@ -289,79 +258,10 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
                       showValue={false}
                       disabled={isLoading}
                     />
+                    <Text variant="small" styles={{ root: { color: '#605e5c' } }}>
+                      Controls response diversity - lower values for more focused responses
+                    </Text>
                   </Stack>
-
-                  <Stack tokens={{ childrenGap: 12 }}>
-                    <Text variant="medium">Frequency Penalty: {parameters.frequencyPenalty}</Text>
-                    <Slider
-                      min={-2}
-                      max={2}
-                      step={0.1}
-                      value={parameters.frequencyPenalty}
-                      onChange={(value) => updateParameter('frequencyPenalty', value)}
-                      showValue={false}
-                      disabled={isLoading}
-                    />
-                  </Stack>
-
-                  <Stack tokens={{ childrenGap: 12 }}>
-                    <Text variant="medium">Presence Penalty: {parameters.presencePenalty}</Text>
-                    <Slider
-                      min={-2}
-                      max={2}
-                      step={0.1}
-                      value={parameters.presencePenalty}
-                      onChange={(value) => updateParameter('presencePenalty', value)}
-                      showValue={false}
-                      disabled={isLoading}
-                    />
-                  </Stack>
-                </Stack>
-              </div>
-
-              <div className={styles.parameterCard}>
-                <Stack tokens={{ childrenGap: 16 }}>
-                  <Text variant="mediumPlus" styles={{ root: { fontWeight: 600 } }}>
-                    System Options
-                  </Text>
-                  
-                  <Checkbox
-                    label="Enable Streaming"
-                    checked={parameters.enableStreaming}
-                    onChange={(_, checked) => updateParameter('enableStreaming', !!checked)}
-                    disabled={isLoading}
-                  />
-
-                  <Checkbox
-                    label="Enable Function Calling"
-                    checked={parameters.enableFunctionCalling}
-                    onChange={(_, checked) => updateParameter('enableFunctionCalling', !!checked)}
-                    disabled={isLoading}
-                  />
-
-                  <SpinButton
-                    label="Timeout (seconds)"
-                    value={parameters.timeoutSeconds.toString()}
-                    onValidate={(value) => updateParameter('timeoutSeconds', parseInt(value) || 30)}
-                    onIncrement={(value) => updateParameter('timeoutSeconds', (parseInt(value) || 30) + 5)}
-                    onDecrement={(value) => updateParameter('timeoutSeconds', Math.max(5, (parseInt(value) || 30) - 5))}
-                    min={5}
-                    max={300}
-                    step={5}
-                    disabled={isLoading}
-                  />
-
-                  <SpinButton
-                    label="Max Retries"
-                    value={parameters.maxRetries.toString()}
-                    onValidate={(value) => updateParameter('maxRetries', parseInt(value) || 3)}
-                    onIncrement={(value) => updateParameter('maxRetries', (parseInt(value) || 3) + 1)}
-                    onDecrement={(value) => updateParameter('maxRetries', Math.max(0, (parseInt(value) || 3) - 1))}
-                    min={0}
-                    max={10}
-                    step={1}
-                    disabled={isLoading}
-                  />
                 </Stack>
               </div>
             </div>
@@ -385,70 +285,10 @@ const ParameterAdjustmentTab: React.FC<ParameterAdjustmentTabProps> = ({
               iconProps={{ iconName: "Refresh" }}
             />
             
-            <DefaultButton
-              text="Advanced Settings"
-              onClick={() => setIsAdvancedPanelOpen(true)}
-              disabled={isLoading}
-              iconProps={{ iconName: "Settings" }}
-            />
           </Stack>
         </>
       )}
 
-      {/* Advanced Settings Panel */}
-      <Panel
-        headerText="Advanced AI Parameters"
-        isOpen={isAdvancedPanelOpen}
-        onDismiss={() => setIsAdvancedPanelOpen(false)}
-        type={PanelType.medium}
-        closeButtonAriaLabel="Close"
-      >
-        <Stack tokens={{ childrenGap: 20 }}>
-          <TextField
-            label="Stop Sequences (comma-separated)"
-            value={parameters.stopSequences.join(', ')}
-            onChange={(_, value) => 
-              updateParameter('stopSequences', 
-                value ? value.split(',').map(s => s.trim()).filter(s => s) : []
-              )
-            }
-            placeholder="Enter stop sequences..."
-            multiline
-            rows={2}
-            disabled={isLoading}
-          />
-          
-          <TextField
-            label="Conversation Starters (one per line)"
-            value={parameters.conversationStarters.join('\n')}
-            onChange={(_, value) => 
-              updateParameter('conversationStarters',
-                value ? value.split('\n').map(s => s.trim()).filter(s => s) : []
-              )
-            }
-            placeholder="Enter conversation starters..."
-            multiline
-            rows={5}
-            disabled={isLoading}
-          />
-          
-          <Stack horizontal tokens={{ childrenGap: 12 }}>
-            <PrimaryButton
-              text="Apply Advanced Settings"
-              onClick={() => {
-                setIsAdvancedPanelOpen(false);
-                onMessage('Advanced settings updated', MessageBarType.info);
-              }}
-              disabled={isLoading}
-            />
-            <DefaultButton
-              text="Cancel"
-              onClick={() => setIsAdvancedPanelOpen(false)}
-              disabled={isLoading}
-            />
-          </Stack>
-        </Stack>
-      </Panel>
     </Stack>
   );
 };
