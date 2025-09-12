@@ -17,6 +17,7 @@ export const useTaskManager = () => {
     const [tasks, setTasks] = useState<TaskStatus[]>([]);
     const [isPolling, setIsPolling] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
     // Load tasks from localStorage on mount
     useEffect(() => {
@@ -148,6 +149,81 @@ export const useTaskManager = () => {
         }
     }, []);
 
+    const forceRefresh = useCallback(async () => {
+        setIsManualRefreshing(true);
+        setError(null);
+        
+        try {
+            // Get all active tasks
+            const activeTasks = tasks.filter(task => 
+                task.status === 'pending' || task.status === 'processing'
+            );
+
+            if (activeTasks.length === 0) {
+                console.log('No active tasks to refresh');
+                return;
+            }
+
+            console.log(`Manually refreshing ${activeTasks.length} active tasks`);
+
+            // Same polling logic as the automatic poll
+            const statusPromises = activeTasks.map(async (task) => {
+                try {
+                    const response = await fetch(`/tasks/${task.task_id}`);
+                    if (response.ok) {
+                        const text = await response.text();
+                        if (!text.trim()) {
+                            console.warn(`Empty response for task ${task.task_id}`);
+                            return { task_id: task.task_id, error: true };
+                        }
+                        try {
+                            return JSON.parse(text);
+                        } catch (parseError) {
+                            console.warn(`Invalid JSON for task ${task.task_id}:`, text);
+                            return { task_id: task.task_id, error: true };
+                        }
+                    } else if (response.status === 404) {
+                        console.warn(`Task ${task.task_id} not found (404), removing from local state`);
+                        return { task_id: task.task_id, notFound: true };
+                    } else {
+                        console.warn(`Failed to fetch status for task ${task.task_id}: ${response.status}`);
+                        return { task_id: task.task_id, error: true };
+                    }
+                } catch (error) {
+                    console.warn(`Error fetching task ${task.task_id}:`, error);
+                    return { task_id: task.task_id, error: true };
+                }
+            });
+
+            const statuses = await Promise.all(statusPromises);
+
+            // Update tasks with new statuses
+            setTasks(prevTasks => {
+                const updated = prevTasks.filter(task => {
+                    const statusUpdate = statuses.find(s => s.task_id === task.task_id);
+                    if (statusUpdate?.notFound) {
+                        console.log(`Removing task ${task.task_id} from local state (not found)`);
+                        return false;
+                    }
+                    return true;
+                }).map(task => {
+                    const updatedStatus = statuses.find(s => s.task_id === task.task_id);
+                    return updatedStatus && !updatedStatus.error && !updatedStatus.notFound
+                        ? { ...task, ...updatedStatus }
+                        : task;
+                });
+                return updated.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            });
+
+            console.log('Manual refresh completed successfully');
+        } catch (error) {
+            console.error('Error during manual refresh:', error);
+            setError('Failed to refresh task statuses');
+        } finally {
+            setIsManualRefreshing(false);
+        }
+    }, [tasks]);
+
     // Simple fixed interval polling to avoid multiple concurrent polling
     useEffect(() => {
         let interval: number;
@@ -225,8 +301,8 @@ export const useTaskManager = () => {
                 }
             };
 
-            // Use fixed 10-second interval to avoid API flooding
-            interval = window.setInterval(poll, 20000);
+            // Use 10-second interval for better responsiveness 
+            interval = window.setInterval(poll, 10000);
             console.log('Task polling started with 10s interval');
         }
 
@@ -256,7 +332,9 @@ export const useTaskManager = () => {
         clearCompletedTasks,
         clearAllTasks,
         cancelTask,
+        forceRefresh,
         isPolling,
+        isManualRefreshing,
         error
     };
 };

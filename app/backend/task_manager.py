@@ -372,6 +372,12 @@ class TaskManager:
         """Process video upload task with enhanced timeout and error handling"""
         task = self.tasks[task_id]
         
+        # Define progress callback for prepare_db
+        def progress_callback(step: str, progress: int):
+            if task.task.status == TaskStatus.CANCELLED:
+                raise Exception("Task was cancelled")
+            self.update_task_progress(task_id, progress, step)
+        
         # Add timeout monitoring
         import time
         start_time = time.time()
@@ -387,8 +393,6 @@ class TaskManager:
         self.update_task_progress(task_id, 5, "Initializing video processing...")
         
         # Brief delay to avoid API rate limiting - reduced due to optimized connection handling
-        import time
-        # Short delay since we now have token caching and optimized connections
         wait_time = 5  # Wait 5 seconds between uploads - much faster with our optimizations
         self.update_task_progress(task_id, 5, f"Preparing upload (waiting {wait_time}s)...")
         time.sleep(wait_time)
@@ -428,174 +432,85 @@ class TaskManager:
             logger.error(f"Failed to import dependencies for task {task_id}: {e}")
             raise Exception(f"System dependency error: {str(e)}")
         
-        # Fast duplicate check before processing
+        # Linus was here: The old logic was flawed. It created a special case for
+        # cached videos, but that special case was wrong. It assumed if a video
+        # was in the cache, its content was already in the *target* library's index.
+        # This is false. A video can be in the cache from being uploaded to Library A,
+        # but this task is for adding it to Library B.
+        #
+        # The correct, robust solution is to *always* call prepare_db.
+        # prepare_db is now responsible for being idempotent. It will check if the
+        # video's content is already in the target index before doing any heavy work.
+        # This eliminates the special case here and fixes the bug.
+        
+        # Ensure file_info exists before proceeding
+        if not task.file_info:
+            raise ValueError(f"Task {task_id} is missing file information.")
+        
         file_cache = get_global_cache()
         if task.file_info.file_path and Path(task.file_info.file_path).exists():
             cached_info = file_cache.get_cached_video_info(Path(task.file_info.file_path))
             if cached_info:
-                self.update_task_progress(task_id, 50, f"Duplicate detected - using cached video_id {cached_info['video_id']}")
-                logger.info(f"Skipping duplicate file upload for {task.file_info.filename} - using cached video_id {cached_info['video_id']}")
-                
-                # Still need to process the video to add it to the target library
-                # Use the cached video_id to quickly generate vectors and add to database
-                try:
-                    # Import dependencies for cached processing
-                    search_db = os.environ.get("PROMPT_CONTENT_DB", "azure_search")
-                    
-                    if search_db == "chromadb":
-                        from vi_search.prompt_content_db.chroma_db import ChromaDB
-                        prompt_content_db = ChromaDB()
-                    elif search_db == "azure_search":
-                        from vi_search.prompt_content_db.azure_search import AzureVectorSearch
-                        prompt_content_db = AzureVectorSearch()
-                    else:
-                        raise ValueError(f"Unknown search_db: {search_db}")
-
-                    lang_model = os.environ.get("LANGUAGE_MODEL", "openai")
-                    if lang_model == "openai":
-                        from vi_search.language_models.azure_openai import OpenAI
-                        language_models = OpenAI()
-                    elif lang_model == "dummy":
-                        from vi_search.language_models.dummy_lm import DummyLanguageModels
-                        language_models = DummyLanguageModels()
-                    else:
-                        raise ValueError(f"Unknown language model: {lang_model}")
-
-                    self.update_task_progress(task_id, 70, "Processing cached video for target library...")
-                    
-                    # Process the cached video with the target library
-                    from vi_search.prepare_db import prepare_db_with_progress
-                    from vi_search.constants import DATA_DIR
-                    
-                    def progress_callback(step: str, progress: int):
-                        if task.status == TaskStatus.CANCELLED:
-                            raise Exception("Task was cancelled")
-                        # Scale progress from 70-95
-                        scaled_progress = 70 + int((progress / 100) * 25)
-                        self.update_task_progress(task_id, scaled_progress, step)
-                    
-                    videos_ids = prepare_db_with_progress(
-                        db_name=task.file_info.library_name,
-                        data_dir=DATA_DIR,
-                        language_models=language_models,
-                        prompt_content_db=prompt_content_db,
-                        single_video_file=task.file_info.file_path,
-                        progress_callback=progress_callback,
-                        verbose=True,
-                        use_videos_ids_cache=True,  # Use cache for fast processing
-                        original_filename=task.file_info.filename,
-                        source_language=task.file_info.source_language or 'auto'
-                    )
-                    
-                    # Save video record to target library database
-                    file_size = 0
-                    if hasattr(task, 'file_size_metadata') and task.file_info.file_size_metadata:
-                        # Use blob size metadata if available
-                        file_size = task.file_info.file_size_metadata
-                    elif task.file_info.file_path and Path(task.file_info.file_path).exists():
-                        # Use local file size for local files
-                        file_size = Path(task.file_info.file_path).stat().st_size
-                        
-                    video_data = {
-                        'filename': task.file_info.filename,
-                        'original_path': task.file_info.file_path,
-                        'library_name': task.file_info.library_name,
-                        'video_id': cached_info['video_id'],
-                        'status': 'indexed',
-                        'file_size': file_size,
-                        'source_type': task.file_info.source_type,
-                        'blob_url': task.file_info.file_path if task.file_info.source_type == 'blob_storage' else None,
-                        'blob_container': self._extract_container_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
-                        'blob_name': self._extract_blob_name_from_url(task.file_info.file_path) if task.file_info.source_type == 'blob_storage' else None,
-                        'source_language': task.file_info.source_language
-                    }
-                    
-                    db_manager.save_video_record(video_data)
-                    logger.info(f"Video record saved for {task.file_info.filename} in library {task.file_info.library_name}")
-                    
-                    # Mark as completed
-                    task.task.status = TaskStatus.COMPLETED
-                    task.execution.progress = 100
-                    task.execution.current_step = f"Duplicate processed - video indexed as {cached_info['video_id']} in {task.file_info.library_name}"
-                    task.execution.completed_at = datetime.now()
-                    self._save_task_to_db(task)
-                    return
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process cached video: {e}")
-                    # Fall through to normal processing if cached processing fails
-
-        # Process video with progress callbacks
-        def progress_callback(step: str, progress: int):
-            if task.task.status == TaskStatus.CANCELLED:
-                raise Exception("Task was cancelled")
-            
-            # Check for timeout during long processing
-            try:
-                elapsed = check_timeout()
-                # Add elapsed time info to progress updates during long waits
-                if progress == 30 and "waiting" in step.lower():
-                    step = f"{step} (elapsed: {elapsed/60:.1f}min)"
-            except TimeoutError as te:
-                logger.error(f"Timeout during progress callback: {te}")
-                raise te
-                
-            self.update_task_progress(task_id, progress, step)
+                video_id = cached_info['video_id']
+                logger.info(f"Duplicate file detected. Using cached video_id: {video_id} for file {task.file_info.filename}")
+                # We still proceed to prepare_db, which will handle the rest.
         
-        # Call the enhanced prepare_db function with timeout monitoring
-        logger.info(f"Starting video processing for task {task_id}")
-        check_timeout()  # Check before starting heavy processing
-        
+        # Always call prepare_db. It's smart enough to handle duplicates within the index.
         try:
+            # This is the core processing function
             videos_ids = prepare_db_with_progress(
                 db_name=task.file_info.library_name,
                 data_dir=DATA_DIR,
                 language_models=language_models,
                 prompt_content_db=prompt_content_db,
+                use_videos_ids_cache=False,
                 single_video_file=task.file_info.file_path,
                 progress_callback=progress_callback,
-                verbose=True,
-                use_videos_ids_cache=False,
                 original_filename=task.file_info.filename,
-                source_language=task.file_info.source_language or 'auto'
+                source_language=task.file_info.source_language
             )
-        except TimeoutError as te:
-            logger.error(f"Video processing timeout for task {task_id}: {te}")
-            raise te
-        except Exception as e:
-            elapsed = check_timeout()
-            logger.error(f"Video processing failed for task {task_id} after {elapsed/60:.1f} minutes: {e}")
-            raise e
-        
-        # Extract video_id from the results
-        # Linus principle: eliminate special cases with proper key normalization
-        video_id = None
-        if videos_ids:
-            # Try multiple key formats to handle path normalization inconsistencies
-            possible_keys = [
-                task.file_info.file_path,  # Original path
-                str(Path(task.file_info.file_path)),  # Path object string
-                str(Path(task.file_info.file_path).resolve()),  # Resolved path
-                Path(task.file_info.file_path).as_posix(),  # POSIX format
-            ]
             
-            for key in possible_keys:
-                if key in videos_ids:
-                    video_id = videos_ids[key]
-                    logger.info(f"Successfully obtained video_id: {video_id} for file: {task.file_info.filename} (key: {key})")
-                    break
+            # Extract video_id from the results
+            # Linus principle: eliminate special cases with proper key normalization
+            video_id = None
+            if videos_ids and task.file_info.file_path:
+                # Try multiple key formats to handle path normalization inconsistencies
+                possible_keys = [
+                    task.file_info.file_path,  # Original path
+                    str(Path(task.file_info.file_path)),  # Path object string
+                ]
+                
+                # Add resolved and POSIX paths only if file_path is not None
+                try:
+                    possible_keys.extend([
+                        str(Path(task.file_info.file_path).resolve()),  # Resolved path
+                        Path(task.file_info.file_path).as_posix(),  # POSIX format
+                    ])
+                except Exception:
+                    # If path operations fail, just use the basic keys
+                    pass
+                
+                for key in possible_keys:
+                    if key in videos_ids:
+                        video_id = videos_ids[key]
+                        logger.info(f"Successfully obtained video_id: {video_id} for file: {task.file_info.filename} (key: {key})")
+                        break
+                
+                if not video_id:
+                    logger.warning(f"No video_id returned for file: {task.file_info.filename}")
+                    logger.debug(f"videos_ids returned: {videos_ids}")
+                    logger.debug(f"Looking for file_path: {task.file_info.file_path}")
+                    logger.debug(f"Tried keys: {possible_keys}")
             
+            # Linus principle: Fail fast - don't save invalid records
             if not video_id:
-                logger.warning(f"No video_id returned for file: {task.file_info.filename}")
-                logger.debug(f"videos_ids returned: {videos_ids}")
-                logger.debug(f"Looking for file_path: {task.file_info.file_path}")
-                logger.debug(f"Tried keys: {possible_keys}")
-        
-        # Linus principle: Fail fast - don't save invalid records
-        if not video_id:
-            error_msg = f"No video_id obtained for {task.file_info.filename}. This indicates processing failed."
-            logger.error(error_msg)
-            raise Exception(error_msg)
+                error_msg = f"No video_id obtained for {task.file_info.filename}. This indicates processing failed."
+                logger.error(error_msg)
+                raise Exception(error_msg)
+
+        except Exception as e:
+            logger.error(f"Error during video processing for task {task_id}: {e}", exc_info=True)
+            raise  # Re-raise to fail the task
 
         # Save video record to database
         try:

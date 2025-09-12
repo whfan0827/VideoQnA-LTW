@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 import logging
+from typing import List
 
 
 logger = logging.getLogger(__name__)
 
 VECTOR_FIELD_NAME = "content_vector"
+
 
 
 class PromptContentDB(ABC):
@@ -60,6 +62,17 @@ class PromptContentDB(ABC):
     @abstractmethod
     def vector_search(self, embeddings_vector, n_results=3) -> tuple[dict, list[str]]:
         ''' Search for the `n_results` closest embeddings to the given vector. '''
+        pass
+
+    @abstractmethod
+    def get_existing_video_ids(self, db_name: str, video_ids: List[str]) -> List[str]:
+        """
+        Given a list of video_ids, return the subset of those that already exist in the specified DB.
+        
+        :param db_name: The name of the database (index) to check.
+        :param video_ids: A list of video IDs to check for existence.
+        :return: A list of video IDs that are already present in the database.
+        """
         pass
 
     @abstractmethod

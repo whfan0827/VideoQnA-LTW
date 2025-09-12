@@ -181,3 +181,17 @@
     margin-bottom: 0;
     border-bottom: 1px solid #d1d1d1;
 }
+
+/* Spin animation for refresh indicator */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+:global(.ms-Icon--Sync) {
+    animation: spin 1s linear infinite;
+}

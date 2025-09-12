@@ -29,13 +29,17 @@ const DEFAULT_CONVERSATION_STARTERS: ConversationStarter[] = [
 ];
 
 export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanelProps) => {
-    const [selectedIndex, setSelectedIndex] = useState(() => {
-        return localStorage.getItem('target_library') || "";
-    });
+    // Use global targetLibrary state instead of local state
+    const { topK, setTopK, targetLibrary, setTargetLibrary } = useAppConfig();
+    const [selectedIndex, setSelectedIndex] = useState("");
     const [message, setMessage] = useState<{ text: string; type: MessageBarType } | null>(null);
     
-    // Use global TopK state instead of local state
-    const { topK, setTopK } = useAppConfig();
+    // Debug logging
+    console.log('🔍 ConversationSettingsPanel render:', {
+        targetLibrary,
+        selectedIndex,
+        indexesLength: indexes.length
+    });
     
     // Conversation Starters state with localStorage initialization
     const [starter1, setStarter1] = useState(() => {
@@ -160,34 +164,30 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
         }
     }, [indexes, selectedIndex]);
 
-    // Persist selectedIndex changes and load library-specific starters
+    // Initialize and sync selectedIndex with global targetLibrary
+    useEffect(() => {
+        console.log('🔍 ConversationSettings: Syncing targetLibrary change:', {
+            targetLibrary,
+            currentSelectedIndex: selectedIndex,
+            needsUpdate: targetLibrary !== selectedIndex
+        });
+        
+        // Always sync selectedIndex with targetLibrary, including initial load
+        setSelectedIndex(targetLibrary || "");
+    }, [targetLibrary]);
+
+    // Load library-specific conversation starters when selectedIndex changes
     useEffect(() => {
         if (selectedIndex) {
-            localStorage.setItem('target_library', selectedIndex);
             // Load conversation starters for the selected library
             loadLibraryConversationStarters(selectedIndex);
         } else {
-            localStorage.removeItem('target_library');
             // Reset to default starters when no library is selected
             loadDefaultConversationStarters();
         }
     }, [selectedIndex]);
 
-    // topK persistence is now handled by useAppConfig
-
-
-    // Save target library to localStorage
-    const saveTargetLibrary = (libraryKey: string) => {
-        try {
-            if (libraryKey) {
-                localStorage.setItem('target_library', libraryKey);
-            } else {
-                localStorage.removeItem('target_library');
-            }
-        } catch (error) {
-            console.error('Error saving target library:', error);
-        }
-    };
+    // Note: localStorage persistence is now handled by useAppConfig
 
 
     const handleSaveConversationStarters = async () => {
@@ -260,23 +260,79 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                 </MessageBar>
             )}
 
+            {/* Current Settings Summary */}
+            <div className={styles.settingCard} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e1e5e9' }}>
+                <h4 style={{ color: '#0078d4', marginBottom: '12px' }}>Current Settings Summary</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px', fontSize: '14px' }}>
+                    <strong>Target Library:</strong>
+                    <span style={{ color: targetLibrary ? '#107c10' : '#d83b01' }}>
+                        {targetLibrary ? (
+                            <span>
+                                {indexes.find(idx => idx.key === targetLibrary)?.text || targetLibrary}
+                                <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.7 }}>✓ Selected</span>
+                            </span>
+                        ) : (
+                            <span>
+                                Not selected 
+                                <span style={{ marginLeft: '8px', fontSize: '12px' }}>⚠️ Required</span>
+                            </span>
+                        )}
+                    </span>
+                    <strong>Top K Results:</strong>
+                    <span>{topK} results</span>
+                    <strong>Library Status:</strong>
+                    <span style={{ color: indexes.length > 0 ? '#107c10' : '#d83b01' }}>
+                        {indexes.length > 0 ? `${indexes.length} libraries available` : 'No libraries available'}
+                    </span>
+                </div>
+            </div>
+
             <Stack tokens={{ childrenGap: 20 }}>
                 {/* Library Selection */}
                 <div className={styles.settingCard}>
                     <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
-                        <h4>Target Library</h4>
+                        <h4>Target Library Selection</h4>
+                        {selectedIndex && (
+                            <span style={{ 
+                                fontSize: '12px', 
+                                color: '#107c10', 
+                                backgroundColor: '#f3f9f3',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontWeight: 500
+                            }}>
+                                Selected: {indexes.find(idx => idx.key === selectedIndex)?.text || selectedIndex}
+                            </span>
+                        )}
                     </Stack>
+                    <p className={styles.description}>
+                        Choose the video library to use as the default query target. This setting affects all new queries.
+                    </p>
                     <Dropdown
-                        placeholder="Select library to configure"
+                        placeholder={selectedIndex ? "Change selected library..." : "Please select a library..."}
                         options={indexes}
                         selectedKey={selectedIndex}
                         onChange={(_, item) => {
                             const libraryKey = item?.key as string || "";
+                            console.log(`🔍 ConversationSettings: Dropdown onChange - selected: ${libraryKey}`);
                             setSelectedIndex(libraryKey);
-                            saveTargetLibrary(libraryKey);
+                            setTargetLibrary(libraryKey);  // This will handle localStorage via useAppConfig
                         }}
                         styles={{ root: { marginTop: '8px' } }}
                     />
+                    {indexes.length === 0 && (
+                        <div style={{ 
+                            marginTop: '8px', 
+                            padding: '8px', 
+                            backgroundColor: '#fef4e6', 
+                            border: '1px solid #f4d03f',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            color: '#d68910'
+                        }}>
+                            ⚠️ No libraries available. Please go to Library Management to create or import video libraries.
+                        </div>
+                    )}
                 </div>
 
                 <Separator />
@@ -284,10 +340,20 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                 {/* Top K Setting */}
                 <div className={styles.settingCard}>
                     <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
-                        <h4>Top K Results</h4>
+                        <h4>Top K Results Setting</h4>
+                        <span style={{ 
+                            fontSize: '12px', 
+                            color: '#0078d4', 
+                            backgroundColor: '#f0f6ff',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontWeight: 500
+                        }}>
+                            Current: {topK}
+                        </span>
                     </Stack>
                     <p className={styles.description}>
-                        Number of most relevant search results to use for generating answers (1-10).
+                        Number of most relevant search results to use for generating answers (1-10). Higher values provide more context but may affect response speed.
                     </p>
                     <SpinButton
                         label="Top K"
@@ -333,16 +399,41 @@ export const ConversationSettingsPanel = ({ indexes }: ConversationSettingsPanel
                                 borderRadius: '10px',
                                 fontWeight: 500
                             }}>
-                                {selectedIndex}
+                                For {indexes.find(idx => idx.key === selectedIndex)?.text || selectedIndex}
                             </span>
                         )}
                     </Stack>
                     <p className={styles.description}>
                         {selectedIndex 
-                            ? `Configure conversation starters specifically for "${selectedIndex}". These will be shown when this library is selected.`
+                            ? `Configure conversation starters specifically for "${indexes.find(idx => idx.key === selectedIndex)?.text || selectedIndex}" library. These will be shown on the main page when this library is selected.`
                             : "Please select a library above to configure library-specific conversation starters."
                         }
                     </p>
+                    
+                    {selectedIndex && (
+                        <div style={{ 
+                            marginTop: '8px', 
+                            marginBottom: '12px',
+                            padding: '8px 12px', 
+                            backgroundColor: '#f0f6ff', 
+                            border: '1px solid #c7e0f4',
+                            borderRadius: '4px',
+                            fontSize: '13px'
+                        }}>
+                            <strong>Current Starters Preview:</strong>
+                            <ol style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                                <li style={{ color: starter1 ? '#323130' : '#a19f9d' }}>
+                                    {starter1 || '(Not set)'}
+                                </li>
+                                <li style={{ color: starter2 ? '#323130' : '#a19f9d' }}>
+                                    {starter2 || '(Not set)'}
+                                </li>
+                                <li style={{ color: starter3 ? '#323130' : '#a19f9d' }}>
+                                    {starter3 || '(Not set)'}
+                                </li>
+                            </ol>
+                        </div>
+                    )}
                     <Stack tokens={{ childrenGap: 12 }}>
                         <TextField
                             label="Starter 1"

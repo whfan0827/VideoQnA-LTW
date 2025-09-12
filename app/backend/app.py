@@ -54,6 +54,8 @@ from vi_search.constants import DATA_DIR
 from services.settings_service import SettingsService
 from services.ai_template_service import AITemplateService, init_ai_templates_database
 from services.conversation_starters_service import conversation_starters_service
+from services.library_manager import LibraryManager
+from services.data_consistency_monitor import DataConsistencyMonitor
 from task_manager import task_manager
 from database.app_data_manager import db_manager
 from database.init_db import init_database
@@ -89,6 +91,12 @@ settings_service = SettingsService()
 
 # Initialize AI template service
 ai_template_service = AITemplateService()
+
+# Initialize library manager
+library_manager = LibraryManager(prompt_content_db, settings_service, db_manager)
+
+# Initialize data consistency monitor
+consistency_monitor = DataConsistencyMonitor(library_manager)
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
@@ -161,7 +169,14 @@ def ask():
             library_settings = settings_service.get_settings(library_name)
             # Library settings take precedence over defaults, but request overrides take precedence over both
             merged_overrides = {**library_settings, **overrides}
+            
+            # ✅ FIX: Ensure user's index choice is never overridden
+            if "index" in overrides:
+                merged_overrides["index"] = overrides["index"]
+                print(f"[DEBUG] Preserving user's index choice: {overrides['index']}")
+            
             print(f"[DEBUG] Merged overrides keys: {list(merged_overrides.keys())}")
+            print(f"[DEBUG] Final index will be: {merged_overrides.get('index')}")
         except Exception as e:
             print(f"Warning: Could not load settings for library '{library_name}': {e}")
             merged_overrides = overrides
@@ -210,20 +225,162 @@ def create_library():
 
 @app.route("/libraries/<library_name>", methods=["DELETE"]) 
 def delete_library(library_name):
-    """Delete a video library (database)"""
+    """Delete a video library (database) with complete cleanup"""
     try:
-        # Check if library exists
-        available_dbs = prompt_content_db.get_available_dbs()
-        if library_name not in available_dbs:
-            return jsonify({"error": "Library not found"}), 404
+        logging.info(f"Starting complete deletion of library: {library_name}")
         
-        # Delete the database
-        prompt_content_db.remove_db(library_name)
+        # Use LibraryManager for complete deletion
+        cleanup_result = library_manager.delete_library_completely(library_name)
         
-        return jsonify({"message": f"Library '{library_name}' deleted successfully"}), 200
+        if cleanup_result.success:
+            return jsonify({
+                "message": f"Library '{library_name}' deleted completely",
+                "cleaned_components": cleanup_result.cleaned_components,
+                "details": f"Successfully cleaned: {', '.join(cleanup_result.cleaned_components)}"
+            }), 200
+        else:
+            return jsonify({
+                "warning": f"Library '{library_name}' partially deleted",
+                "cleaned_components": cleanup_result.cleaned_components,
+                "failed_components": cleanup_result.failed_components,
+                "errors": cleanup_result.errors,
+                "message": "Some components could not be deleted. Please check logs."
+            }), 207  # 207 Multi-Status
         
     except Exception as e:
         logging.exception("Exception in /libraries DELETE")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/status", methods=["GET"])
+def get_libraries_status():
+    """Get all libraries with their consistency status"""
+    try:
+        libraries = library_manager.list_all_libraries_with_status()
+        
+        consistent_count = sum(1 for lib in libraries if lib['consistent'])
+        inconsistent_count = len(libraries) - consistent_count
+        
+        return jsonify({
+            "libraries": libraries,
+            "summary": {
+                "total": len(libraries),
+                "consistent": consistent_count,
+                "inconsistent": inconsistent_count
+            }
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in /libraries/status")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/libraries/cleanup-inconsistent", methods=["POST"])
+def cleanup_inconsistent_libraries():
+    """Automatically clean up all inconsistent libraries"""
+    try:
+        logging.info("Starting automatic cleanup of inconsistent libraries")
+        
+        cleanup_results = library_manager.cleanup_inconsistent_libraries()
+        
+        total_cleaned = len(cleanup_results)
+        successful_cleaned = sum(1 for result in cleanup_results if result.success)
+        
+        return jsonify({
+            "message": f"Cleanup completed. Processed {total_cleaned} inconsistent libraries.",
+            "summary": {
+                "total_processed": total_cleaned,
+                "successful": successful_cleaned,
+                "failed": total_cleaned - successful_cleaned
+            },
+            "details": [
+                {
+                    "library": result.library_name,
+                    "success": result.success,
+                    "cleaned_components": result.cleaned_components,
+                    "failed_components": result.failed_components,
+                    "errors": result.errors
+                }
+                for result in cleanup_results
+            ]
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in /libraries/cleanup-inconsistent")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/system/data-consistency/status", methods=["GET"])
+def get_data_consistency_status():
+    """Get data consistency monitoring status"""
+    try:
+        monitor_status = consistency_monitor.get_monitoring_status()
+        last_check = consistency_monitor.get_last_check_results()
+        
+        return jsonify({
+            "monitoring": monitor_status,
+            "last_check": last_check
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in data consistency status")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/system/data-consistency/check", methods=["POST"])
+def force_consistency_check():
+    """Force a data consistency check"""
+    try:
+        results = consistency_monitor.force_consistency_check()
+        return jsonify(results), 200
+        
+    except Exception as e:
+        logging.exception("Exception in force consistency check")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/system/data-consistency/auto-fix", methods=["POST"])
+def auto_fix_consistency():
+    """Automatically fix data consistency issues"""
+    try:
+        results = consistency_monitor.auto_fix_inconsistencies()
+        return jsonify(results), 200
+        
+    except Exception as e:
+        logging.exception("Exception in auto-fix consistency")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/system/data-consistency/monitor", methods=["POST"])
+def start_consistency_monitoring():
+    """Start automatic data consistency monitoring"""
+    try:
+        data = request.get_json() or {}
+        interval_minutes = data.get('interval_minutes', 60)
+        
+        consistency_monitor.start_monitoring(interval_minutes)
+        
+        return jsonify({
+            "message": f"Data consistency monitoring started with {interval_minutes} minute intervals"
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in start consistency monitoring")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/system/data-consistency/monitor", methods=["DELETE"])
+def stop_consistency_monitoring():
+    """Stop automatic data consistency monitoring"""
+    try:
+        consistency_monitor.stop_monitoring()
+        
+        return jsonify({
+            "message": "Data consistency monitoring stopped"
+        }), 200
+        
+    except Exception as e:
+        logging.exception("Exception in stop consistency monitoring")
         return jsonify({"error": str(e)}), 500
 
 

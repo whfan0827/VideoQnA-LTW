@@ -80,6 +80,9 @@ class RetrieveThenReadVectorApproach(Approach):
         sys_prompt = overrides.get("sys_prompt", self.system_prompt)
         user_prompt = (overrides.get("user_template", self.user_template)).format(q=q, retrieved=all_content)
 
+        logger.info(f"System prompt for LLM:\\n{sys_prompt}")
+        logger.info(f"User prompt for LLM:\\n{user_prompt}")
+
         temperature = overrides.get("temperature", self.temperature)
         top_p = overrides.get("top_p", self.top_p)
         max_tokens = overrides.get("max_tokens", None)

@@ -83,6 +83,16 @@ export const Answer = ({
                         {parsedAnswer.citations.map((x, i) => {
                             const path = getViCitationSrc(x, answer.docs_by_id);
                             const title = getVideoTitle(x, answer.docs_by_id);
+                            
+                            // Debug logging for citation issues
+                            console.log(`🔍 Citation ${i + 1}:`, {
+                                docId: x,
+                                path: path,
+                                title: title,
+                                hasDoc: !!answer.docs_by_id[x],
+                                doc: answer.docs_by_id[x]
+                            });
+                            
                             return (
                                 <a key={i} className={styles.citation} title={title} onClick={() => onCitationClicked(path, x)}>
                                     {`${++i}. ${title}`}

@@ -6,13 +6,14 @@
 
 - **🎥 Video Intelligence**: Automated video processing with Azure Video Indexer
 - **🤖 AI-Powered Q&A**: Natural language queries with contextual video responses  
-- **⚡ Smart Caching**: File hash-based duplicate detection system
-- **📊 Task Management**: Background processing with real-time progress tracking
+- **⚡ Smart Caching**: File hash-based duplicate detection with idempotent processing
+- **📊 Task Management**: Background processing with real-time progress tracking & manual refresh
 - **🔍 Multi-Database Support**: Azure AI Search and ChromaDB vector databases
 - **🎯 Template System**: Customizable AI response templates for different use cases
-- **📱 Modern UI**: React frontend with Fluent UI components
+- **📱 Modern UI**: React frontend with Fluent UI components and live status indicators
 - **🔄 Hybrid Storage**: Local file uploads + Azure Blob Storage imports
 - **📝 Caption Export**: Multi-format subtitle export (SRT, VTT, TTML) with language support
+- **🛠️ Robust Error Handling**: Idempotent pipelines eliminate duplicate processing bugs
 
 
 ## 🏗️ System Architecture Overview
@@ -192,12 +193,13 @@ graph LR
 - **Flask app** (`app.py`): Main application with REST API endpoints
 - **vi_search/**: Core RAG functionality
   - `ask.py`: Query processing with RetrieveThenReadVectorApproach
-  - `prepare_db.py`: Video indexing pipeline with hash cache integration
-  - `file_hash_cache.py`: **NEW** - MD5-based duplicate detection system
-  - `prompt_content_db/`: Vector database implementations (Azure Search, ChromaDB)
+  - `prepare_db.py`: **ENHANCED** - Idempotent video indexing pipeline with duplicate-safe processing
+  - `file_hash_cache.py`: MD5-based duplicate detection system
+  - `prompt_content_db/`: **ENHANCED** - Vector database implementations with `get_existing_video_ids()` method
   - `language_models/`: LLM integrations (Azure OpenAI, dummy for testing)
   - `vi_client/`: Azure Video Indexer API client with optimized networking
 - **database/**: SQLite database managers for app data, AI templates, settings
+- **Frontend**: **ENHANCED** - React components with manual refresh, live polling indicators, improved UX
 - **services/**: Business logic services including blob storage integration
 - **task_manager.py**: **Enhanced** - Background task processing with retry logic
 
@@ -1104,6 +1106,14 @@ python -c "from services.blob_storage_service import get_blob_storage_service; s
 
 **_Answer_**: Yes, the hybrid architecture supports mixing both source types in a single library. The system tracks the source type in the database and handles both transparently with the same user interface and processing pipeline.
 
+**_Question_**: Why does my duplicate video show "Duplicate processed" but Q&A fails?
+
+**_Answer_**: This was a critical bug in v3.2 and earlier, fixed in v3.3. The system now uses an idempotent processing pipeline that checks if content already exists in the target library index before processing. If you encounter this issue, try re-uploading the video or use the manual "Refresh Status" button in Processing Status.
+
+**_Question_**: Processing Status shows "Pending" but Azure Video Indexer shows "Processed" - how to fix?
+
+**_Answer_**: This synchronization issue is improved in v3.3 with faster 10-second polling and a manual refresh button. Click "Refresh Status" in the Processing Status tab, or wait for automatic updates. The system now shows real-time polling indicators and refresh notifications.
+
 ## 🤝 Development Guidelines
 
 - **Virtual Environment**: Always check for virtual environment before running Python code
@@ -1126,8 +1136,27 @@ For bugs or feature requests, please refer to the project repository or contact 
 
 ---
 
-**Last Updated**: 2025-09-10  
-**System Version**: VideoQnA-LTW v3.2 (Enhanced Architecture Documentation)  
-**New Features**: Comprehensive Mermaid diagrams, enhanced blob storage language support  
+**Last Updated**: 2025-09-13  
+**System Version**: VideoQnA-LTW v3.3 (Critical Bug Fixes & UX Improvements)  
+**Bug Fixes**: Fixed duplicate video Q&A failures, improved status synchronization  
+**New Features**: Manual refresh button, enhanced polling, idempotent processing pipeline  
 **Documentation Style**: Technical diagrams with Linus-approved clarity and simplicity  
 **Architecture Visualization**: Complete system flows using Mermaid instead of static images
+
+## 🐛 Recent Critical Fixes (v3.3)
+
+### Fixed: Duplicate Video Q&A Failures
+**Issue**: Videos marked as "Duplicate processed" would fail Q&A queries with "I didn't find the answer..." 
+**Root Cause**: Flawed special-case logic in task manager skipped content indexing for duplicate videos
+**Solution**: Implemented idempotent `prepare_db.py` pipeline with `get_existing_video_ids()` method
+- ✅ Eliminates special-case duplicate handling (Linus principle: "good taste")
+- ✅ Always processes through main pipeline, skips only if content already indexed
+- ✅ Robust cross-database compatibility (Azure Search + ChromaDB)
+
+### Enhanced: Processing Status Synchronization  
+**Issue**: Frontend status stuck on "Pending" despite Video Indexer showing "Processed"
+**Solutions**: 
+- ✅ Fixed polling interval (20s→10s) for better responsiveness
+- ✅ Added manual "Refresh Status" button with visual feedback
+- ✅ Real-time status indicators with spinning icons
+- ✅ Automatic refresh notifications ("Auto-refresh every 10s")

@@ -6,7 +6,7 @@ This was implemented with the help of the following resource:
 
 import logging
 import time
-from typing import Optional
+from typing import Optional, List
 
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential
@@ -268,6 +268,44 @@ class AzureVectorSearch(PromptContentDB):
                 raise RuntimeError("The count of the results is not equal to the count of the documents in the index")
 
         return results
+
+    def get_existing_video_ids(self, db_name: str, video_ids: List[str]) -> List[str]:
+        """
+        Given a list of video_ids, return the subset of those that already exist in the specified Azure Search index.
+        
+        :param db_name: The name of the index to check.
+        :param video_ids: A list of video IDs to check for existence.
+        :return: A list of video IDs that are already present in the index.
+        """
+        if not video_ids:
+            return []
+
+        try:
+            search_client = self._get_search_client(db_name)
+            
+            # Construct a filter string like: "video_id eq 'id1' or video_id eq 'id2' or ..."
+            # This is safer than using 'in' which has limitations on list size.
+            filter_query = " or ".join([f"video_id eq '{vid}'" for vid in video_ids])
+            
+            # Search for documents matching any of the video_ids
+            search_results = search_client.search(
+                search_text="*",
+                filter=filter_query,
+                select=["video_id"],  # Only retrieve the video_id field for efficiency
+                top=len(video_ids)    # Ensure we can retrieve all possible matches
+            )
+            
+            # Use a set to collect unique video_ids from the results
+            existing_ids = {result["video_id"] for result in search_results}
+            
+            logger.info(f"Checked for {len(video_ids)} video IDs in index '{db_name}', found {len(existing_ids)} existing.")
+            return list(existing_ids)
+            
+        except Exception as e:
+            logger.error(f"Failed to get existing video IDs from index '{db_name}': {e}")
+            # In case of failure, return an empty list to ensure the calling process continues
+            # as if no videos were found, preventing a crash.
+            return []
 
     def delete_video_documents(self, video_id: str) -> bool:
         """

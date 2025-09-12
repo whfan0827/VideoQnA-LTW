@@ -347,11 +347,28 @@ def prepare_db_with_progress(db_name, data_dir, language_models: LanguageModels,
 
     wait_for_videos_processing(client, videos_ids, timeout=3600)
 
+    # Linus was here: Check which videos are already in this specific index
+    # to avoid re-processing content that's already there.
+    video_ids_to_process = list(videos_ids.values())
+    try:
+        existing_video_ids = prompt_content_db.get_existing_video_ids(db_name, video_ids_to_process)
+        if existing_video_ids:
+            print(f"Found {len(existing_video_ids)} videos already in index '{db_name}'. Skipping their processing.")
+            video_ids_to_process = [vid for vid in video_ids_to_process if vid not in existing_video_ids]
+    except Exception as e:
+        print(f"Warning: Could not check for existing video IDs in index '{db_name}'. Will process all. Error: {e}")
+
+    if not video_ids_to_process:
+        print(f"All videos already exist in index '{db_name}'. Nothing to do.")
+        if progress_callback:
+            progress_callback("All videos already exist in this library.", 100)
+        return videos_ids
+
     if progress_callback:
-        progress_callback("Generating AI-powered content analysis... (this may take 30-120 minutes for longer videos)", 50)
+        progress_callback(f"Processing {len(video_ids_to_process)} new videos for this library...", 50)
 
     ### Getting indexed videos prompt content ###
-    videos_prompt_content = client.get_collection_prompt_content(list(videos_ids.values()), timeout_sec=7200)
+    videos_prompt_content = client.get_collection_prompt_content(video_ids_to_process, timeout_sec=7200)
 
     if verbose:
         for video_id, prompt_content in videos_prompt_content.items():

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Example } from "./Example";
+import { useAppConfig } from "../../hooks/useAppConfig";
 
 import styles from "./Example.module.css";
 
@@ -30,7 +31,10 @@ interface Props {
 }
 
 export const ExampleList = ({ onExampleClicked }: Props) => {
+    const { targetLibrary } = useAppConfig();
     const [examples, setExamples] = useState<ExampleModel[]>(DEFAULT_EXAMPLES);
+    
+    console.log('🔍 ExampleList render:', { targetLibrary });
 
     // Load custom starters from localStorage (fallback)
     const loadCustomStarters = () => {
@@ -101,21 +105,30 @@ export const ExampleList = ({ onExampleClicked }: Props) => {
         }
     };
 
+    // Load starters when targetLibrary changes or component mounts
     useEffect(() => {
-        // Load initial starters based on current target library
-        const targetLibrary = localStorage.getItem('target_library');
+        console.log('🔍 ExampleList: targetLibrary effect triggered:', { targetLibrary });
+        
         if (targetLibrary) {
             loadLibraryStarters(targetLibrary);
         } else {
             loadCustomStarters();
         }
+    }, [targetLibrary]);
 
-        // Listen for updates from ConversationSettings
+    useEffect(() => {
+        // Listen for updates from ConversationSettings - reload current library starters
         const handleUpdate = () => {
-            loadCustomStarters();
+            if (targetLibrary) {
+                console.log('🔍 ExampleList: Conversation starters updated, reloading library starters for:', targetLibrary);
+                loadLibraryStarters(targetLibrary);
+            } else {
+                console.log('🔍 ExampleList: Conversation starters updated, loading default starters');
+                loadCustomStarters();
+            }
         };
 
-        // Listen for target library changes
+        // Listen for target library changes (legacy support)
         const handleTargetLibraryChange = (event: any) => {
             const { libraryId } = event.detail || {};
             if (libraryId) {
@@ -132,7 +145,7 @@ export const ExampleList = ({ onExampleClicked }: Props) => {
             window.removeEventListener('conversation_starters_updated', handleUpdate);
             window.removeEventListener('target_library_changed', handleTargetLibraryChange);
         };
-    }, []);
+    }, [targetLibrary]); // Include targetLibrary in dependencies
 
     return (
         <ul className={styles.examplesNavList}>

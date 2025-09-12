@@ -1,7 +1,9 @@
 import logging
+from typing import List
 
 import chromadb
 from chromadb.api import ClientAPI
+
 
 from .prompt_content_db import nonewlines, PromptContentDB, VECTOR_FIELD_NAME
 from vi_search.constants import CHROMA_DB_DIR
@@ -96,36 +98,65 @@ class ChromaDB(PromptContentDB):
 
         docs_by_id = {}
         results_content = []
-        if results.get('ids') and len(results['ids']) > 0:
+        if results and results.get('ids') and len(results['ids']) > 0:
+            documents = results.get('documents', [[]])[0]
+            metadatas = results.get('metadatas', [[]])[0]
             for idx, uid in enumerate(results['ids'][0]):
-                metadata_list = results.get('metadatas', [[]])
-                documents_list = results.get('documents', [[]])
-                distances_list = results.get('distances', [[]])
-                
-                # Safely access the first element of each list
-                metadata = metadata_list[0] if metadata_list and len(metadata_list) > 0 else []
-                documents = documents_list[0] if documents_list and len(documents_list) > 0 else []
-                distances = distances_list[0] if distances_list and len(distances_list) > 0 else []
-                
-                if idx < len(metadata):
-                    docs_by_id[uid] = metadata[idx] or {}
-                    if idx < len(documents):
-                        docs_by_id[uid].update({'content': documents[idx] or ''})
-                    if idx < len(distances):
-                        docs_by_id[uid].update({'distance': distances[idx] or 0.0})
-                    results_content.append(f'{uid}: {nonewlines(documents[idx] if idx < len(documents) else "")}')
+                doc = {
+                    'id': uid,
+                    'content': documents[idx] if documents and idx < len(documents) else "",
+                    **(metadatas[idx] if metadatas and idx < len(metadatas) else {})
+                }
+                docs_by_id[uid] = doc
+                results_content.append(f'{uid}: {nonewlines(doc["content"])}')
 
         return docs_by_id, results_content
 
-    def get_collection_data(self):
-        ''' Get collection's data. '''
+    def get_existing_video_ids(self, db_name: str, video_ids: List[str]) -> List[str]:
+        """
+        Given a list of video_ids, return the subset of those that already exist in the specified ChromaDB collection.
+        
+        :param db_name: The name of the collection to check.
+        :param video_ids: A list of video IDs to check for existence.
+        :return: A list of video IDs that are already present in the collection.
+        """
+        if not video_ids:
+            return []
 
-        all_data = self.db_handle.get(include=['embeddings', 'documents', 'metadatas'])
-        return all_data
+        try:
+            collection = self.client.get_collection(db_name)
+            
+            # For ChromaDB, we need to check each video_id individually due to the filter limitations
+            existing_ids = []
+            
+            for video_id in video_ids:
+                try:
+                    # Query for documents with this specific video_id
+                    results = collection.get(
+                        where={"video_id": video_id},
+                        include=["metadatas"],
+                        limit=1
+                    )
+                    
+                    # If we got results, this video_id exists
+                    metadatas = results.get('metadatas') if results else None
+                    if metadatas and len(metadatas) > 0:
+                        existing_ids.append(video_id)
+                        
+                except Exception as e:
+                    logger.warning(f"Error checking video_id {video_id} in collection '{db_name}': {e}")
+                    continue
+            
+            logger.info(f"Checked for {len(video_ids)} video IDs in collection '{db_name}', found {len(existing_ids)} existing.")
+            return existing_ids
+
+        except Exception as e:
+            logger.error(f"Failed to get existing video IDs from collection '{db_name}': {e}")
+            return []
 
     def delete_video_documents(self, video_id: str) -> bool:
         """
-        Delete all documents belonging to a specific video from the collection.
+        Delete all documents belonging to a specific video from the ChromaDB collection.
         
         :param video_id: The video ID to delete documents for
         :return: True if deletion was successful, False otherwise

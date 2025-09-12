@@ -111,8 +111,8 @@ const OneShot = () => {
         setActiveScene(undefined);
         setActiveAnalysisPanelTab(undefined);
 
-        // Use target library or current index
-        const selectedIndex = targetLibrary || index;
+        // Use current index selection, fallback to target library
+        const selectedIndex = index || targetLibrary;
 
         const request: AskRequest = {
             question,
@@ -146,12 +146,19 @@ const OneShot = () => {
     };
 
     const onShowCitation = (citation: string, docId: string) => {
+        console.log('🔍 Citation clicked:', { citation, docId });
+        console.log('🔍 Current askApiCall.data:', askApiCall.data);
+        console.log('🔍 docs_by_id:', askApiCall.data?.docs_by_id);
+        console.log('🔍 Specific doc:', askApiCall.data?.docs_by_id?.[docId]);
+        
         if (activeCitation === citation && activeAnalysisPanelTab === AnalysisPanelTabs.CitationTab) {
             setActiveAnalysisPanelTab(undefined);
         } else {
             setActiveCitation(citation);
             setActiveScene(docId);
             setActiveAnalysisPanelTab(AnalysisPanelTabs.CitationTab);
+            console.log('🎯 Set active citation:', citation);
+            console.log('🎯 Set active scene:', docId);
         }
     };
 
@@ -188,6 +195,93 @@ const OneShot = () => {
                         <ClearChatButton className={styles.commandButton} onClick={clearChat} disabled={!lastQuestionRef.current || askApiCall.isLoading} />
                     </div>
                     <h1 className={styles.oneshotTitle}>Unlock insights from your video library</h1>
+                    
+                    {/* Target Library Status Indicator */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        marginBottom: '16px'
+                    }}>
+                        {targetLibrary ? (
+                            <div 
+                                style={{
+                                    background: 'linear-gradient(135deg, #0078d4, #106ebe)',
+                                    color: 'white',
+                                    padding: '8px 16px',
+                                    borderRadius: '20px',
+                                    fontSize: '14px',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    boxShadow: '0 2px 8px rgba(0, 120, 212, 0.3)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    userSelect: 'none'
+                                }}
+                                onClick={() => setIsConfigPanelOpen(true)}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 120, 212, 0.4)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 120, 212, 0.3)';
+                                }}
+                                title="Click to change Target Library"
+                            >
+                                <span style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    backgroundColor: '#4CAF50',
+                                    borderRadius: '50%',
+                                    animation: 'pulse 2s infinite'
+                                }}></span>
+                                <strong>Target Library:</strong> 
+                                <span style={{marginLeft: '4px'}}>
+                                    {formatString(targetLibrary)}
+                                </span>
+                                <span style={{
+                                    marginLeft: '8px',
+                                    fontSize: '12px',
+                                    opacity: '0.8'
+                                }}>✏️</span>
+                            </div>
+                        ) : (
+                            <div 
+                                style={{
+                                    background: '#fff4e6',
+                                    color: '#d68910',
+                                    border: '1px solid #f4d03f',
+                                    padding: '8px 16px',
+                                    borderRadius: '20px',
+                                    fontSize: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    userSelect: 'none'
+                                }}
+                                onClick={() => setIsConfigPanelOpen(true)}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#fef9e7';
+                                    e.currentTarget.style.borderColor = '#f1c40f';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#fff4e6';
+                                    e.currentTarget.style.borderColor = '#f4d03f';
+                                }}
+                                title="Click to select a Target Library"
+                            >
+                                <span style={{
+                                    fontSize: '16px'
+                                }}>⚠️</span>
+                                <span>No Target Library selected - Click to choose one</span>
+                            </div>
+                        )}
+                    </div>
+                    
                     <h3 className={styles.oneshotSubTitle}>
                         <div>This is a platform of AI can find answers from your video library. </div>
                         <div>AI-generated content can have mistakes. Make sure it's accurate and appropriate before using it.</div>

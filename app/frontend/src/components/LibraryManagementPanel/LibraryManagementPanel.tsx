@@ -57,7 +57,7 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
     });
     
     // Task management
-    const { tasks, addTask, removeTask, clearCompletedTasks, clearAllTasks, cancelTask, error: taskError } = useTaskManager();
+    const { tasks, addTask, removeTask, clearCompletedTasks, clearAllTasks, cancelTask, forceRefresh, isPolling, isManualRefreshing, error: taskError } = useTaskManager();
 
     // Persist state to localStorage
     useEffect(() => {
@@ -685,7 +685,22 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                     <div className={styles.taskStatusSection}>
                         <Stack horizontal horizontalAlign="space-between" verticalAlign="center" tokens={{ childrenGap: 8 }}>
                             <div>
-                                <h4>Processing Status ({tasks.length})</h4>
+                                <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
+                                    <h4>Processing Status ({tasks.length})</h4>
+                                    {(isPolling || isManualRefreshing) && (
+                                        <div style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#0078d4' }}>
+                                            <i 
+                                                className="ms-Icon ms-Icon--Sync" 
+                                                style={{ 
+                                                    fontSize: '12px', 
+                                                    marginRight: '4px',
+                                                    animation: 'spin 1s linear infinite'
+                                                }}
+                                            />
+                                            {isManualRefreshing ? 'Refreshing...' : 'Auto-updating'}
+                                        </div>
+                                    )}
+                                </Stack>
                                 <small style={{ color: '#605e5c' }}>
                                     {(() => {
                                         const pending = tasks.filter(t => t.status === 'pending').length;
@@ -693,11 +708,21 @@ export const LibraryManagementPanel = ({ indexes, onLibrariesChanged }: LibraryM
                                         const completed = tasks.filter(t => t.status === 'completed').length;
                                         const failed = tasks.filter(t => t.status === 'failed').length;
                                         const cancelled = tasks.filter(t => t.status === 'cancelled').length;
-                                        return `Active: ${pending + processing}, Completed: ${completed}, Failed: ${failed}, Cancelled: ${cancelled}`;
+                                        const activeTasks = pending + processing;
+                                        const statusText = `Active: ${activeTasks}, Completed: ${completed}, Failed: ${failed}, Cancelled: ${cancelled}`;
+                                        const pollText = activeTasks > 0 ? ' • Auto-refresh every 10s' : '';
+                                        return statusText + pollText;
                                     })()}
                                 </small>
                             </div>
                             <div>
+                                <DefaultButton 
+                                    text={isManualRefreshing ? "Refreshing..." : "Refresh Status"} 
+                                    onClick={forceRefresh}
+                                    disabled={isManualRefreshing}
+                                    iconProps={{ iconName: isManualRefreshing ? 'Sync' : 'Refresh' }}
+                                    styles={{ root: { minWidth: 'auto', marginRight: 8 } }}
+                                />
                                 <DefaultButton 
                                     text="Clear All" 
                                     onClick={clearAllTasks}
