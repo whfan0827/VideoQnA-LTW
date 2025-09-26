@@ -186,5 +186,75 @@
     "cached_at_readable": "2025-09-12 22:53:52",
     "privacy": "public",
     "upload_method": "file"
+  },
+  "c4a73339569c04e32b8b71fd892228f2": {
+    "video_id": "1fbpdk3bx3",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "07How_Do_I_Build_Microsoft_365_Copilot_Agents_with_Code_.mp4",
+    "file_size": 59791779,
+    "cached_at": 1758795502.2680516,
+    "cached_at_readable": "2025-09-25 18:18:22",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "e34f5b939493b8e3ae17ca49846fa77b": {
+    "video_id": "zb9msxr7xg",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "06DEMO_Coding_Copilot_Connectors_to_Bring_External_Data_into_M365_Copilot.mp4",
+    "file_size": 61030129,
+    "cached_at": 1758797603.2486064,
+    "cached_at_readable": "2025-09-25 18:53:23",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "a31707595cbe0ea46b6daa149faf75cd": {
+    "video_id": "tcaa21swzd",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "05Connect_External_Data_to_M365_Copilot_Using_Built-in_Copilot_Connectors.mp4",
+    "file_size": 52202978,
+    "cached_at": 1758798239.4420002,
+    "cached_at_readable": "2025-09-25 19:03:59",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "746bf626649c2dd43eefcf3afa4b9e13": {
+    "video_id": "kmkt2np4re",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "04Guide_to_Building_Copilot_Agents_with_NO_CODE_using_Agent_Builder.mp4",
+    "file_size": 55586501,
+    "cached_at": 1758798804.8795547,
+    "cached_at_readable": "2025-09-25 19:13:24",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "b03bc50afc59668fdfab723b2ee48b2a": {
+    "video_id": "jlg786hlu4",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "03Step-by-Step_Guide_to_Creating_SharePoint_Agents.mp4",
+    "file_size": 65153404,
+    "cached_at": 1758799458.6330454,
+    "cached_at_readable": "2025-09-25 19:24:18",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "2860f7885796a92f26c668e2af674de3": {
+    "video_id": "qz3wcbyiwh",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "02Customizing_Microsoft_365_Copilot_Concepts_Terms_You_NEED_to_Know.mp4",
+    "file_size": 86993709,
+    "cached_at": 1758800623.316913,
+    "cached_at_readable": "2025-09-25 19:43:43",
+    "privacy": "public",
+    "upload_method": "file"
+  },
+  "3322b8ac3785f396df0b3c32b1dbdf47": {
+    "video_id": "1he6l76la2",
+    "library_name": "vi-buildacopilotagent-index",
+    "filename": "01Unlock_Copilots_FULL_Potential_Microsoft_365_Copilot_Tutorial_Series.mp4",
+    "file_size": 38136690,
+    "cached_at": 1758801264.69344,
+    "cached_at_readable": "2025-09-25 19:54:24",
+    "privacy": "public",
+    "upload_method": "file"
   }
 }

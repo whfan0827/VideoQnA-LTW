@@ -40,6 +40,7 @@ class AzureVectorSearch(PromptContentDB):
         super().__init__()
         self._search_params = self._get_search_params()
         self._index_client = SearchIndexClient(**self._search_params)
+        self._index_cache = None
 
     @staticmethod
     def _get_search_params() -> dict:
@@ -65,6 +66,11 @@ class AzureVectorSearch(PromptContentDB):
         search_client = SearchClient(**self._search_params, index_name=index_name)
         return search_client
 
+    def _invalidate_cache(self) -> None:
+        '''Invalidate the index cache to force a fresh fetch on next request.'''
+        logger.debug("Invalidating index cache")
+        self._index_cache = None
+
     def create_db(self, name: str, vector_search_dimensions: int) -> None:
         ''' Create new or get existing Azure Search index.
 
@@ -74,6 +80,8 @@ class AzureVectorSearch(PromptContentDB):
         search_client = self.create_new_search_index(name, vector_search_dimensions)
         self.db_name = name
         self.db_handle = search_client
+        # Invalidate cache when creating new index
+        self._invalidate_cache()
 
     def remove_db(self, name: str) -> None:
         ''' Removes index completely.
@@ -124,11 +132,34 @@ class AzureVectorSearch(PromptContentDB):
                 logger.error(f"Fallback document clearing also failed: {fallback_error}")
                 raise
 
+        # Invalidate cache when removing index
+        self._invalidate_cache()
+
     def get_available_dbs(self) -> list[str]:
-        ''' Get the list of available search indexes. '''
-        indexes = self._index_client.list_index_names()
-        indexes = [index for index in indexes]
-        return indexes
+        ''' Get the list of available search indexes with permanent caching. Cache only invalidated on create/delete. '''
+
+        # Return cached data if available
+        if self._index_cache is not None:
+            logger.debug("Using cached index list")
+            return self._index_cache
+
+        try:
+            # Fetch fresh data
+            logger.debug("Fetching fresh index list from Azure Search")
+            indexes = self._index_client.list_index_names()
+            indexes = [index for index in indexes]
+
+            # Cache permanently until explicitly invalidated
+            self._index_cache = indexes
+            logger.debug(f"Cached {len(indexes)} indexes permanently")
+            return indexes
+        except Exception as e:
+            logger.error(f"Failed to fetch index list: {e}")
+            # Return cached data if available, even if stale
+            if self._index_cache is not None:
+                logger.warning("Returning stale cached index list due to API error")
+                return self._index_cache
+            raise
 
     def set_db(self, name: str) -> None:
         if name not in self.get_available_dbs():
@@ -244,6 +275,8 @@ class AzureVectorSearch(PromptContentDB):
 
         self._index_client.create_index(index)
         search_client = self._get_search_client(name)
+        # Invalidate cache when creating new index
+        self._invalidate_cache()
         return search_client
 
 
