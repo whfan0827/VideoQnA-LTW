@@ -1,4 +1,4 @@
-# VideoQnA-LTW: Video Archive Q&A with RAG
+# VideoQnA-LTW: Video Archive Q&A application
 
 **A production-ready Video Archive Q&A application using Retrieval Augmented Generation (RAG)** that integrates Azure AI Video Indexer, Azure OpenAI, and vector databases for intelligent video content analysis and querying.
 
@@ -1189,3 +1189,6 @@ For bugs or feature requests, please refer to the project repository or contact 
 - ✅ Added manual "Refresh Status" button with visual feedback
 - ✅ Real-time status indicators with spinning icons
 - ✅ Automatic refresh notifications ("Auto-refresh every 10s")
+
+## Credits
+This project was originally inspired by [azure-video-indexer-samples](https://github.com/Azure-Samples/azure-video-indexer-samples.git).
