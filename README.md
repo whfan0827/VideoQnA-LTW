@@ -6,7 +6,7 @@
 
 - **🎥 Video Intelligence**: Automated video processing with Azure Video Indexer
 - **🤖 AI-Powered Q&A**: Natural language queries with contextual video responses  
-- **⚡ Smart Caching**: File hash-based duplicate detection with idempotent processing
+- **⚡ Smart Caching**: File hash-based duplicate detection with idempotent processing + Azure Search index caching
 - **📊 Task Management**: Background processing with real-time progress tracking & manual refresh
 - **🔍 Multi-Database Support**: Azure AI Search and ChromaDB vector databases
 - **🎯 Template System**: Customizable AI response templates for different use cases
@@ -702,6 +702,7 @@ python .\app\backend\vi_search\prepare_db.py
 
 ### 🔄 Smart Caching & Performance
 - **File Hash Cache**: MD5-based duplicate detection prevents redundant video uploads
+- **Azure Search Index Caching**: Permanent caching of index lists with smart invalidation
 - **Token Caching**: Azure authentication tokens cached for 50 minutes
 - **Connection Pooling**: Shared HTTP sessions reduce connection overhead
 - **Retry Logic**: Exponential backoff for transient network failures
@@ -1063,6 +1064,12 @@ Make sure you have the correct version of Python installed. The script requires 
    - Monitor Azure service health status
    - Verify subscription quotas and limits
 
+3. **Azure Container Apps Upload Issues**
+   - **Symptoms**: Video upload fails after ACA restart, logs show excessive Azure Search API calls
+   - **Solution**: Fixed in v3.4 with Azure Search index caching
+   - **Verification**: Run `python test_api_usage.py` to confirm cache behavior
+   - **Manual Fix**: Restart the application if encountering this issue with older versions
+
 #### Blob Storage Issues
 1. **Large File Uploads**
    - Ensure stable network connection
@@ -1078,6 +1085,9 @@ Make sure you have the correct version of Python installed. The script requires 
 ```powershell
 # Check application status
 curl http://localhost:5000/indexes
+
+# Test Azure Search index caching (requires Azure configuration)
+python test_api_usage.py
 
 # Check Docker container status (if using Docker)
 docker-compose ps
@@ -1136,16 +1146,35 @@ For bugs or feature requests, please refer to the project repository or contact 
 
 ---
 
-**Last Updated**: 2025-09-13  
-**System Version**: VideoQnA-LTW v3.3 (Critical Bug Fixes & UX Improvements)  
-**Bug Fixes**: Fixed duplicate video Q&A failures, improved status synchronization  
-**New Features**: Manual refresh button, enhanced polling, idempotent processing pipeline  
-**Documentation Style**: Technical diagrams with Linus-approved clarity and simplicity  
+**Last Updated**: 2025-09-26
+**System Version**: VideoQnA-LTW v3.4 (Azure Search Performance & Critical Fixes)
+**Bug Fixes**: Fixed Azure Search API throttling, duplicate video Q&A failures, improved status synchronization
+**New Features**: Azure Search index caching, manual refresh button, enhanced polling, idempotent processing pipeline
+**Performance**: Eliminated excessive Azure Search API calls, improved ACA deployment stability
+**Documentation Style**: Technical diagrams with Linus-approved clarity and simplicity
 **Architecture Visualization**: Complete system flows using Mermaid instead of static images
 
-## 🐛 Recent Critical Fixes (v3.3)
+## 🐛 Recent Critical Fixes (v3.4)
 
-### Fixed: Duplicate Video Q&A Failures
+### Fixed: Azure Search API Throttling in ACA Environment
+**Issue**: After Azure Container Apps (ACA) stop/start cycles, video upload functionality completely failed with excessive Azure Search API calls (multiple requests per second to `/indexes` endpoint)
+**Root Cause**: `get_available_dbs()` method called repeatedly without caching, causing API throttling and connection issues
+**Solution**: Implemented intelligent permanent caching for Azure Search index list
+- ✅ **Permanent Cache**: Index list cached until explicitly invalidated (eliminates time-based expiration complexity)
+- ✅ **Smart Invalidation**: Cache automatically cleared only when creating/deleting indexes
+- ✅ **Error Resilience**: Falls back to stale cache data if Azure Search API temporarily unavailable
+- ✅ **ACA Stability**: Eliminates connection pool exhaustion issues after container restarts
+- ✅ **Performance**: Reduces index queries from multiple/second to once per session
+
+**Impact**:
+- 🔥 **Immediate Fix**: Video upload functionality restored in ACA environments
+- ⚡ **Performance**: 99%+ reduction in unnecessary Azure Search API calls
+- 💰 **Cost Savings**: Prevents API quota waste from redundant queries
+- 🛡️ **Reliability**: Robust handling of container restart scenarios
+
+### Previous Critical Fixes (v3.3)
+
+#### Fixed: Duplicate Video Q&A Failures
 **Issue**: Videos marked as "Duplicate processed" would fail Q&A queries with "I didn't find the answer..." 
 **Root Cause**: Flawed special-case logic in task manager skipped content indexing for duplicate videos
 **Solution**: Implemented idempotent `prepare_db.py` pipeline with `get_existing_video_ids()` method
