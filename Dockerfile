@@ -31,10 +31,14 @@ COPY app/backend/ ./
 
 # 前端建置已直接輸出到 ../backend/static，無需額外複製
 
+# 創建應用內的 data 目錄
+RUN mkdir -p /app/data
+
 # 設置環境變數
 ENV PYTHONPATH=/app
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
+ENV DATA_DIR=/app/data
 
 # 暴露端口
 EXPOSE 5000

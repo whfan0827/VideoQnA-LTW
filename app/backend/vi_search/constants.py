@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -7,6 +8,7 @@ SCHEMA_VERSION = '0.0.1'
 BACKEND_DIR = Path(__file__).parent.parent.absolute().resolve()
 BASE_DIR = BACKEND_DIR.parent.parent.absolute().resolve()
 
-DATA_DIR = BASE_DIR / 'data'
+# Support environment variable override for container deployments
+DATA_DIR = Path(os.getenv('DATA_DIR', BASE_DIR / 'data'))
 
 CHROMA_DB_DIR = BACKEND_DIR / '.chroma'

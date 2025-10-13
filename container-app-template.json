@@ -160,6 +160,10 @@
                                     "value": "/app"
                                 },
                                 {
+                                    "name": "DATA_DIR",
+                                    "value": "/app/data"
+                                },
+                                {
                                     "name": "LANGUAGE_MODEL",
                                     "value": "openai"
                                 },

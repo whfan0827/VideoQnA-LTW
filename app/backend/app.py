@@ -52,6 +52,9 @@ from flask_limiter.util import get_remote_address
 from vi_search.ask import RetrieveThenReadVectorApproach
 from vi_search.constants import DATA_DIR
 from services.settings_service import SettingsService
+
+# Ensure DATA_DIR exists
+DATA_DIR.mkdir(exist_ok=True)
 from services.ai_template_service import AITemplateService, init_ai_templates_database
 from services.conversation_starters_service import conversation_starters_service
 from services.library_manager import LibraryManager
