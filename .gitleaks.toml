@@ -1,0 +1,58 @@
+# GitLeaks Configuration
+# Prevents secrets from being committed to Git
+
+[extend]
+useDefault = true
+
+# Azure OpenAI API Keys
+[[rules]]
+id = "azure-openai-key"
+description = "Azure OpenAI API Key"
+regex = '''[a-zA-Z0-9]{32,}[A-Za-z0-9]{20,}'''
+tags = ["azure", "openai", "key"]
+
+# Azure Service Principal Secrets
+[[rules]]
+id = "azure-client-secret"
+description = "Azure Client Secret"
+regex = '''[a-zA-Z0-9~_-]{34,40}'''
+tags = ["azure", "secret"]
+
+# Generic API Keys (catches most formats)
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|secret|password|token)\s*[=:]\s*['"]?([a-zA-Z0-9~_-]{20,})['"]?'''
+tags = ["key", "secret"]
+
+# Azure Connection Strings
+[[rules]]
+id = "azure-connection-string"
+description = "Azure Connection String"
+regex = '''DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[^;]+'''
+tags = ["azure", "connection-string"]
+
+# Private Keys
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN (RSA |EC )?PRIVATE KEY-----'''
+tags = ["key", "private"]
+
+[allowlist]
+description = "Allowlist for false positives"
+paths = [
+    '''\\.env\\.example$''',
+    '''\\.env.*\\.template$''',
+    '''README\\.md$''',
+    '''SECURITY_INCIDENT.*\\.md$'''  # This file documents redacted secrets
+]
+
+regexes = [
+    '''REDACTED''',
+    '''your_.*_key''',
+    '''your_.*_secret''',
+    '''test_account''',
+    '''dummy''',
+    '''placeholder'''
+]
