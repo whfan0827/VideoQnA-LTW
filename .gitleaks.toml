@@ -45,7 +45,8 @@ paths = [
     '''\\.env\\.example$''',
     '''\\.env.*\\.template$''',
     '''README\\.md$''',
-    '''SECURITY_INCIDENT.*\\.md$'''  # This file documents redacted secrets
+    '''SECURITY_INCIDENT.*\\.md$''',  # This file documents redacted secrets
+    '''file_hash_cache\\.json$'''  # MD5 hashes, not secrets
 ]
 
 regexes = [
